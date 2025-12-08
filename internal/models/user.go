@@ -11,10 +11,14 @@ import (
 )
 
 var (
-	ErrUserNotFound    = errors.New("user not found")
+	// Returned when no matching user record is found.
+	ErrUserNotFound = errors.New("user not found")
+
+	// Returned when the provided password does not match the stored hash.
 	ErrInvalidPassword = errors.New("invalid password")
 )
 
+// User represents an account in the system.
 type User struct {
 	ID           int64     `json:"id"`
 	UUID         string    `json:"uuid"`
@@ -24,14 +28,16 @@ type User struct {
 	FirstName    string    `json:"first_name"`
 	LastName     string    `json:"last_name"`
 	Email        string    `json:"email"`
-	PasswordHash string    `json:"-"`
+	PasswordHash string    `json:"-"` // never exposed in JSON
 	CreatedAt    time.Time `json:"created_at"`
 }
 
+// UserModel provides database operations for user management.
 type UserModel struct {
 	DB *sql.DB
 }
 
+// Create inserts a new user record with a securely hashed password.
 func (m *UserModel) Create(ctx context.Context, u *User, password string) error {
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
@@ -61,8 +67,8 @@ func (m *UserModel) Create(ctx context.Context, u *User, password string) error 
 	return nil
 }
 
+// GetByIdentifier retrieves a user using either nickname or email.
 func (m *UserModel) GetByIdentifier(ctx context.Context, identifier string) (*User, error) {
-	// identifier puede ser nickname o email
 	query := `
 	SELECT id, uuid, nickname, age, gender, first_name, last_name, email, password_hash, created_at
 	FROM users
@@ -82,9 +88,11 @@ func (m *UserModel) GetByIdentifier(ctx context.Context, identifier string) (*Us
 		}
 		return nil, err
 	}
+
 	return &u, nil
 }
 
+// Authenticate validates a user by identifier and password.
 func (m *UserModel) Authenticate(ctx context.Context, identifier, password string) (*User, error) {
 	u, err := m.GetByIdentifier(ctx, identifier)
 	if err != nil {

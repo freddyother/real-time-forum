@@ -11,30 +11,34 @@ import (
 )
 
 func main() {
-	// Database route
+	// Determine database path (environment overrides default).
 	dsn := "forum.db"
 	if v := os.Getenv("DATABASE_PATH"); v != "" {
 		dsn = v
 	}
 
+	// Open SQLite database connection.
 	db, err := mydb.Open(dsn)
 	if err != nil {
 		log.Fatalf("error opening DB: %v", err)
 	}
 	defer db.Close()
 
+	// Apply database schema migrations.
 	if err := mydb.RunMigrations(db); err != nil {
 		log.Fatalf("error running migrations: %v", err)
 	}
 
-	// WebSocket hub
+	// Create and start the WebSocket hub for real-time messaging.
 	hub := ws.NewHub()
 	go hub.Run()
 
-	// Servidor HTTP
+	// Create the HTTP server with all dependencies.
 	server := httpserver.NewServer(db, hub)
 
 	log.Println("listening on :8080")
+
+	// Start the server and block until failure.
 	if err := http.ListenAndServe(":8080", server.Router()); err != nil {
 		log.Fatal(err)
 	}

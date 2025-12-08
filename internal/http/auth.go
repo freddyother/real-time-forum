@@ -20,10 +20,11 @@ type registerRequest struct {
 }
 
 type loginRequest struct {
-	Identifier string `json:"identifier"` // nickname o email
+	Identifier string `json:"identifier"` // nickname or email
 	Password   string `json:"password"`
 }
 
+// handleRegister processes a user registration request.
 func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -36,8 +37,6 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	u := &s.users // atajo, pero mejor usar s.users directamente
-
 	user := &models.User{
 		Nickname:  req.Nickname,
 		Age:       req.Age,
@@ -47,6 +46,7 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		Email:     req.Email,
 	}
 
+	// Create the user record.
 	if err := s.users.Create(r.Context(), user, req.Password); err != nil {
 		http.Error(w, "cannot create user", http.StatusInternalServerError)
 		return
@@ -57,6 +57,7 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// handleLogin authenticates a user and creates a session.
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -75,27 +76,28 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Generate session ID and store it.
 	sessionID := uuid.NewString()
 	if err := s.createSession(r.Context(), sessionID, user.ID); err != nil {
 		http.Error(w, "cannot create session", http.StatusInternalServerError)
 		return
 	}
 
-	cookie := &http.Cookie{
+	// Issue session cookie.
+	http.SetCookie(w, &http.Cookie{
 		Name:     "session_id",
 		Value:    sessionID,
 		Path:     "/",
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
-		// Secure:   true, // si usas https
-	}
-	http.SetCookie(w, cookie)
+	})
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"user": user,
 	})
 }
 
+// handleLogout removes the user session and clears the cookie.
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -107,7 +109,7 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 		_ = s.deleteSession(r.Context(), cookie.Value)
 	}
 
-	// Expirar cookie
+	// Clear session cookie.
 	http.SetCookie(w, &http.Cookie{
 		Name:     "session_id",
 		Value:    "",
@@ -119,8 +121,7 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// --- Sesiones ---
-
+// createSession stores a new session record.
 func (s *Server) createSession(ctx context.Context, id string, userID int64) error {
 	_, err := s.db.ExecContext(ctx,
 		`INSERT INTO sessions (id, user_id) VALUES (?, ?)`,
@@ -129,6 +130,7 @@ func (s *Server) createSession(ctx context.Context, id string, userID int64) err
 	return err
 }
 
+// deleteSession removes a session record.
 func (s *Server) deleteSession(ctx context.Context, id string) error {
 	_, err := s.db.ExecContext(ctx,
 		`DELETE FROM sessions WHERE id = ?`,
@@ -137,6 +139,7 @@ func (s *Server) deleteSession(ctx context.Context, id string) error {
 	return err
 }
 
+// getUserIDBySession retrieves the user ID associated with a session.
 func (s *Server) getUserIDBySession(ctx context.Context, id string) (int64, error) {
 	var userID int64
 	err := s.db.QueryRowContext(ctx,

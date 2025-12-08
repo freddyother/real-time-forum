@@ -11,6 +11,6 @@ func Open(path string) (*sql.DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	db.SetMaxOpenConns(1) // SQLite, un solo writer
+	db.SetMaxOpenConns(1) // SQLite, one writer only
 	return db, db.Ping()
 }
