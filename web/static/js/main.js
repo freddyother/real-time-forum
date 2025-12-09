@@ -5,27 +5,29 @@ import { renderNavbar } from './components/navbar.js'
 import { renderChatSidebar } from './views/view-chat.js'
 
 function bootstrap() {
+  // Initialise global state and router
   initState()
   initRouter()
 
   const app = document.getElementById('app')
   const sidebar = document.getElementById('sidebar-chat')
 
-  renderNavbar(app) // coloca navbar arriba del app o dentro
-  renderChatSidebar(sidebar) // lista de chats/usuarios siempre visible
+  // Render navbar and chat sidebar
+  renderNavbar(app)
+  renderChatSidebar(sidebar)
 
-  // Reaccionar a cambios de usuario logueado
+  // React to login / logout changes
   onStateChange('currentUser', (user) => {
     if (user) {
       connectWS(user)
-      navigateTo('feed') // ir al feed si ya está logueado
+      navigateTo('feed') // go to feed when user logs in
     } else {
       disconnectWS()
-      navigateTo('login')
+      navigateTo('login') // go to login when user logs out
     }
   })
 
-  // Primera ruta
+  // Initial route based on current user
   const state = getState()
   if (state.currentUser) {
     connectWS(state.currentUser)

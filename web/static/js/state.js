@@ -9,7 +9,7 @@ const state = {
 const listeners = {}
 
 export function initState() {
-  // Cargar de localStorage/cookie si quieres
+  // loading localStorage/cookie
 }
 
 export function getState() {
