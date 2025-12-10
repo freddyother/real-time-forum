@@ -3,7 +3,9 @@ package httpserver
 import (
 	"database/sql"
 	"encoding/json"
+	"log"
 	"net/http"
+	"time"
 
 	"real-time-forum/internal/models"
 	"real-time-forum/internal/ws"
@@ -81,6 +83,31 @@ func (s *Server) Router() http.Handler {
 	// WebSocket endpoint
 	mux.HandleFunc("/ws/chat", s.handleChatWS)
 
-	// Wrap with middleware (sessions, logging, etc.)
-	return s.withSessionMiddleware(mux)
+	// Wrap with session middleware and logging middleware.
+	handler := s.withSessionMiddleware(mux)
+	return loggingMiddleware(handler)
+}
+
+// loggingResponseWriter wraps http.ResponseWriter to capture status code.
+type loggingResponseWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (lrw *loggingResponseWriter) WriteHeader(code int) {
+	lrw.status = code
+	lrw.ResponseWriter.WriteHeader(code)
+}
+
+// loggingMiddleware logs method, path, status and duration for each request.
+func loggingMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+
+		lrw := &loggingResponseWriter{ResponseWriter: w, status: http.StatusOK}
+		next.ServeHTTP(lrw, r)
+
+		duration := time.Since(start)
+		log.Printf("[HTTP] %s %s -> %d (%s)\n", r.Method, r.URL.Path, lrw.status, duration)
+	})
 }

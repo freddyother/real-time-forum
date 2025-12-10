@@ -15,7 +15,7 @@ export function renderAuthView(root, mode = 'login') {
             <input type="password" id="password" placeholder="Password" required>
             <button type="submit">Login</button>
         </form>
-        <p>No account? <a href="#/register">Register here</a></p>
+        <p>No account? <a href="#register">Register here</a></p>
         `
 
     const form = container.querySelector('#loginForm')
@@ -44,7 +44,7 @@ export function renderAuthView(root, mode = 'login') {
             <input type="password" id="password" placeholder="Password" required>
             <button type="submit">Register</button>
         </form>
-        <p>Already have an account? <a href="#/login">Login here</a></p>
+        <p>Already have an account? <a href="#login">Login here</a></p>
         `
 
     const form = container.querySelector('#registerForm')

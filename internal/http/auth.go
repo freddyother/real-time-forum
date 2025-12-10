@@ -3,6 +3,7 @@ package httpserver
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"net/http"
 	"real-time-forum/internal/models"
 
@@ -59,6 +60,8 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 
 // handleLogin authenticates a user and creates a session.
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
+	log.Println("[LOGIN] Request received")
+
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -66,22 +69,30 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 	var req loginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		log.Println("[LOGIN] Bad request:", err)
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
 
+	log.Printf("[LOGIN] Attempt username/email=%s\n", req.Identifier)
+
 	user, err := s.users.Authenticate(r.Context(), req.Identifier, req.Password)
 	if err != nil {
+		log.Println("[LOGIN] Invalid credentials:", err)
 		http.Error(w, "invalid credentials", http.StatusUnauthorized)
 		return
 	}
+	log.Printf("[LOGIN] User authenticated, id=%d\n", user.ID)
 
 	// Generate session ID and store it.
 	sessionID := uuid.NewString()
 	if err := s.createSession(r.Context(), sessionID, user.ID); err != nil {
+		log.Println("[LOGIN] Session creation failed:", err)
 		http.Error(w, "cannot create session", http.StatusInternalServerError)
 		return
 	}
+
+	log.Printf("[LOGIN] Session created: %s\n", sessionID)
 
 	// Issue session cookie.
 	http.SetCookie(w, &http.Cookie{
@@ -91,6 +102,8 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 	})
+
+	log.Printf("[LOGIN] Login complete for user=%d\n", user.ID)
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"user": user,

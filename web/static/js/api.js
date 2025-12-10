@@ -1,21 +1,52 @@
 const BASE_URL = '/api'
 
+// Helper for JSON-based API requests with basic logging.
 async function request(path, options = {}) {
+  const method = options.method || 'GET'
+
   const res = await fetch(BASE_URL + path, {
-    credentials: 'include',
+    credentials: 'include', // include cookies for sessions
     headers: {
       'Content-Type': 'application/json',
     },
     ...options,
   })
 
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}))
-    throw new Error(err.error || 'Request failed')
+  // Read raw body once (it may be empty).
+  const text = await res.text()
+
+  // Log every response for debugging purposes.
+  console.log(`[API] ${method} ${BASE_URL + path} -> ${res.status}`, text || '(empty body)')
+
+  // No content (e.g. 204).
+  if (res.status === 204) {
+    if (!res.ok) {
+      throw new Error('Request failed with status ' + res.status)
+    }
+    return null
   }
 
-  if (res.status === 204) return null
-  return res.json()
+  // Try to parse JSON if there is a body.
+  let data = null
+  if (text) {
+    try {
+      data = JSON.parse(text)
+    } catch {
+      // If JSON parsing fails and status is not ok, treat as error.
+      if (!res.ok) {
+        throw new Error('Request failed (invalid JSON response)')
+      }
+      // For successful non-JSON responses, return raw text.
+      return text
+    }
+  }
+
+  if (!res.ok) {
+    const message = (data && data.error) || 'Request failed'
+    throw new Error(message)
+  }
+
+  return data
 }
 
 export function apiRegister(data) {
@@ -36,8 +67,14 @@ export function apiLogout() {
   return request('/logout', { method: 'POST' })
 }
 
+// Fetch list of posts and always return an array.
 export function apiGetPosts() {
-  return request('/posts')
+  return request('/posts').then((data) => {
+    if (!data) return []
+    // Backend returns { posts: [...] }
+    if (Array.isArray(data.posts)) return data.posts
+    return []
+  })
 }
 
 export function apiGetPost(id) {
