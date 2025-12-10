@@ -134,7 +134,7 @@ button:hover {
 }
 
 /* -----------------------------------------
-   AUTH FORMS (Login/Register)
+   AUTH LAYOUT (Login & Register)
 ------------------------------------------ */
 .auth-container {
   max-width: 420px;
@@ -147,14 +147,55 @@ button:hover {
   box-shadow: var(--shadow-soft);
 }
 
-.auth-container h2 {
+.auth-header {
   text-align: center;
   margin-bottom: 20px;
+}
+
+.auth-header h2 {
+  margin-bottom: 6px;
   color: var(--purple-dark);
 }
 
-.auth-container a {
+.auth-header p {
+  font-size: 14px;
+  color: var(--text-light);
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.auth-field span {
+  display: block;
+  font-size: 13px;
+  color: var(--text-light);
+  margin-bottom: 4px;
+}
+
+.auth-switch {
+  margin-top: 12px;
+  text-align: center;
+  font-size: 14px;
+}
+
+.auth-switch a {
   color: var(--purple);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.auth-switch a:hover {
+  opacity: 0.8;
+}
+
+/* Smaller helper text */
+.auth-helper {
+  font-size: 12px;
+  color: var(--text-light);
+  margin-top: 4px;
 }
 
 /* -----------------------------------------
