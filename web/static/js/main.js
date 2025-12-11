@@ -4,33 +4,58 @@ import { connectWS, disconnectWS } from './websocket.js'
 import { renderNavbar } from './components/navbar.js'
 import { renderChatSidebar } from './views/view-chat.js'
 
+// Helper to mount / remount the navbar when a user is logged in
+function mountNavbar() {
+  const navbarRoot = document.getElementById('navbar-root')
+  if (!navbarRoot) return
+
+  // Remove any existing navbar (avoid duplicates)
+  const existing = navbarRoot.querySelector('.navbar')
+  if (existing) existing.remove()
+
+  // Render navbar for the current user
+  renderNavbar(navbarRoot)
+}
+
+// Helper to remove navbar when the user logs out
+function unmountNavbar() {
+  const navbarRoot = document.getElementById('navbar-root')
+  if (!navbarRoot) return
+
+  const existing = navbarRoot.querySelector('.navbar')
+  if (existing) existing.remove()
+}
+
 function bootstrap() {
-  // Initialise global state and router
+  // Initialise global state
   initState()
-  initRouter()
 
-  const app = document.getElementById('app')
   const sidebar = document.getElementById('sidebar-chat')
-
-  // Render navbar and chat sidebar
-  renderNavbar(app)
   renderChatSidebar(sidebar)
 
   // React to login / logout changes
   onStateChange('currentUser', (user) => {
     if (user) {
+      // User just logged in
       connectWS(user)
+      mountNavbar()
       navigateTo('feed') // go to feed when user logs in
     } else {
+      // User logged out
       disconnectWS()
+      unmountNavbar()
       navigateTo('login') // go to login when user logs out
     }
   })
 
-  // Initial route based on current user
+  // Start router (hashchange listener + initial route)
+  initRouter()
+
+  // Initial route based on existing user (e.g. restored from storage)
   const state = getState()
   if (state.currentUser) {
     connectWS(state.currentUser)
+    mountNavbar()
     navigateTo('feed')
   } else {
     navigateTo('login')

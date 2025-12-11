@@ -20,6 +20,7 @@ export function renderNavbar(root) {
     <div class="nav-left">
       <span class="nav-logo">Real-Time Forum</span>
       <button class="nav-btn" data-route="feed">Feed</button>
+      <button class="nav-btn" data-route="new-post">New post</button>
       <button class="nav-btn" data-route="chat">Chat</button>
     </div>
 

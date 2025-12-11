@@ -2,6 +2,8 @@ import { renderAuthView } from './views/view-auth.js'
 import { renderFeedView } from './views/view-feed.js'
 import { renderPostView } from './views/view-post.js'
 import { renderChatView } from './views/view-chat.js'
+import { renderNewPostView } from './views/view-new-post.js'
+
 import { getState } from './state.js'
 
 let currentView = null
@@ -56,6 +58,10 @@ function handleRoute() {
 
     case 'post':
       renderPostView(app, param)
+      break
+
+    case 'new-post':
+      renderNewPostView(app)
       break
 
     case 'chat':

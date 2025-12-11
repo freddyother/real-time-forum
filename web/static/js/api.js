@@ -80,11 +80,14 @@ export function apiGetPost(id) {
   return request(`/posts/${id}`)
 }
 
-export function apiCreatePost(data) {
-  return request('/posts', {
+export async function apiCreatePost(data) {
+  const res = await request('/posts', {
     method: 'POST',
     body: JSON.stringify(data),
   })
+
+  console.log('[API] apiCreatePost -> created post id:', res.post?.id)
+  return res.post
 }
 
 export function apiAddComment(postId, data) {

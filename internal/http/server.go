@@ -19,6 +19,13 @@ type Server struct {
 	posts *models.PostModel
 }
 
+// createPostRequest represents the JSON payload used to create a new post.
+type createPostRequest struct {
+	Title    string `json:"title"`
+	Content  string `json:"content"`
+	Category string `json:"category"`
+}
+
 // NewServer creates a new Server instance with all required components.
 func NewServer(db *sql.DB, hub *ws.Hub) *Server {
 	return &Server{
@@ -48,28 +55,72 @@ func writeJSON(w http.ResponseWriter, status int, data any) {
 }
 
 // -------------------------------------------------------------------------------------------------------------------
-// handlePosts returns the latest forum posts as JSON.
+//	handlePosts function
 // -------------------------------------------------------------------------------------------------------------------
+
+// handlePosts routes GET and POST requests for forum posts.
 func (s *Server) handlePosts(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
+	switch r.Method {
+	case http.MethodGet:
+		// List the latest posts (up to 100).
+		posts, err := s.posts.List(r.Context(), 100)
+		if err != nil {
+			log.Println("[POSTS] Error loading posts:", err)
+			http.Error(w, "cannot load posts", http.StatusInternalServerError)
+			return
+		}
+
+		log.Printf("[POSTS] Returned %d posts\n", len(posts))
+
+		writeJSON(w, http.StatusOK, map[string]any{
+			"posts": posts,
+		})
+
+	case http.MethodPost:
+		// Only authenticated users can create posts.
+		userID, ok := getUserIDFromContext(r)
+		if !ok {
+			http.Error(w, "unauthorised", http.StatusUnauthorized)
+			return
+		}
+
+		var req createPostRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+
+		if req.Title == "" || req.Content == "" {
+			http.Error(w, "title and content are required", http.StatusBadRequest)
+			return
+		}
+
+		if req.Category == "" {
+			req.Category = "General"
+		}
+
+		post := &models.Post{
+			UserID:   userID,
+			Title:    req.Title,
+			Content:  req.Content,
+			Category: req.Category,
+		}
+
+		if err := s.posts.Create(r.Context(), post); err != nil {
+			log.Println("[POSTS] Error creating post:", err)
+			http.Error(w, "cannot create post", http.StatusInternalServerError)
+			return
+		}
+
+		log.Printf("[POSTS] Created post id=%d by user=%d\n", post.ID, userID)
+
+		writeJSON(w, http.StatusCreated, map[string]any{
+			"post": post,
+		})
+
+	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
 	}
-
-	// Fetch up to 100 posts from the database.
-	posts, err := s.posts.List(r.Context(), 100)
-	if err != nil {
-		log.Println("[POSTS] Error loading posts:", err)
-		http.Error(w, "cannot load posts", http.StatusInternalServerError)
-		return
-	}
-
-	log.Printf("[POSTS] Returned %d posts\n", len(posts))
-
-	// Wrap in an object so we can extend the payload later if needed.
-	writeJSON(w, http.StatusOK, map[string]any{
-		"posts": posts,
-	})
 }
 
 // Router configures and returns the main HTTP handler.

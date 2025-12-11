@@ -90,8 +90,25 @@ body::after {
   margin-left: 12px;
 }
 
+/* Optional: consistent style for nav buttons */
+.nav-btn {
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: none;
+  background: rgba(139, 92, 246, 0.12);
+  color: var(--purple-dark);
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: 0.15s ease;
+}
+
+.nav-btn:hover {
+  background: rgba(139, 92, 246, 0.2);
+}
+
 /* -----------------------------------------
-   INPUTS (Glass)
+   INPUTS & SELECTS (Glass)
 ------------------------------------------ */
 input,
 select {
@@ -109,10 +126,34 @@ select {
   transition: 0.2s;
 }
 
-input:focus {
+input:focus,
+select:focus {
   border-color: var(--purple);
   box-shadow: 0 0 4px rgba(139, 92, 246, 0.4);
   outline: none;
+}
+
+/* Textarea with the same glass style */
+textarea {
+  width: 100%;
+  padding: 10px 14px;
+  margin: 10px 0;
+  font-size: 14px;
+  border-radius: var(--radius);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(12px);
+  font-family: inherit;
+  resize: vertical;
+  min-height: 130px;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.06);
+  outline: none;
+  transition: 0.2s;
+}
+
+textarea:focus {
+  border-color: var(--purple);
+  box-shadow: 0 0 4px rgba(139, 92, 246, 0.4);
 }
 
 /* -----------------------------------------
@@ -146,7 +187,7 @@ input:focus {
 }
 
 /* -----------------------------------------
-   AUTH LAYOUT (Login & Register)
+   AUTH / FORM LAYOUT (Login, Register)
 ------------------------------------------ */
 .auth-container {
   width: 360px;
@@ -159,6 +200,46 @@ input:focus {
   box-shadow: var(--shadow-soft);
 }
 
+/* New post can reuse auth-container but be slightly wider */
+.new-post-container {
+  width: 520px;
+}
+
+/* Shared form titles (login, register, new post) */
+.form-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--purple-dark);
+  text-align: center;
+  margin-bottom: 6px;
+}
+
+.form-subtitle {
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-light);
+  margin-bottom: 24px;
+}
+
+/* Footer text below forms (e.g. "Already registered? Log in") */
+.form-footer {
+  margin-top: 14px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-light);
+}
+
+.form-footer a {
+  color: var(--purple);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.form-footer a:hover {
+  text-decoration: underline;
+}
+
+/* Old auth-header styles (still safe to keep if used elsewhere) */
 .auth-header {
   text-align: center;
   margin-bottom: 20px;
@@ -271,6 +352,147 @@ input:focus {
 .post-meta {
   font-size: 12px;
   color: var(--text-light);
+}
+
+/* -----------------------------------------
+   NEW POST CARD (wider than auth)
+------------------------------------------ */
+
+.new-post-card {
+  width: 620px; /* wider card */
+  margin: 60px auto;
+  padding: 28px 32px;
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius);
+  backdrop-filter: blur(16px);
+  box-shadow: var(--shadow-soft);
+}
+
+.new-post-header {
+  text-align: center;
+  margin-bottom: 18px;
+}
+
+.new-post-header h2 {
+  margin-bottom: 4px;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--purple-dark);
+}
+
+.new-post-header p {
+  font-size: 13px;
+  color: var(--text-light);
+}
+
+.new-post-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* text area for content */
+.new-post-form textarea {
+  width: 100%;
+  min-height: 140px;
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(12px);
+  font-size: 14px;
+  resize: vertical;
+  outline: none;
+  transition: 0.2s;
+}
+
+.new-post-form textarea:focus {
+  border-color: var(--purple);
+  box-shadow: 0 0 4px rgba(139, 92, 246, 0.4);
+}
+
+/* main submit button for new post */
+.new-post-submit {
+  align-self: center;
+  margin-top: 8px;
+  padding: 9px 26px;
+  font-size: 14px;
+  font-weight: 600;
+  background: var(--purple);
+  color: #ffffff;
+  border: none;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-soft);
+  cursor: pointer;
+  transition: 0.2s ease;
+}
+
+.new-post-submit:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+.new-post-submit:active {
+  transform: translateY(1px);
+  opacity: 0.85;
+}
+
+/* -----------------------------------------
+NEW POST – CATEGORY CHIPS ------------------------------------------ */
+
+.category-section {
+  margin-top: 4px;
+  margin-bottom: 8px;
+}
+
+.category-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-dark);
+  margin-bottom: 4px;
+}
+
+/* compact grid of small chips */
+.category-chips {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(80px, max-content));
+  gap: 4px 6px;
+  margin-bottom: 6px;
+}
+
+/* override any generic button styles */
+.category-chip {
+  width: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  padding: 3px 8px; /* smaller */
+  font-size: 11px;
+  border-radius: 999px;
+  border: none;
+  background: rgba(139, 92, 246, 0.08);
+  color: var(--purple-dark);
+  cursor: pointer;
+  transition: 0.15s ease;
+  box-shadow: none; /* keep them light */
+}
+
+.category-chip:hover {
+  background: rgba(139, 92, 246, 0.18);
+}
+
+.category-chip.is-selected {
+  background: var(--purple);
+  color: #ffffff;
+  box-shadow: 0 4px 10px rgba(139, 92, 246, 0.35);
+}
+
+/* input to create custom category */
+.category-input {
+  font-size: 12px;
+  margin-top: 2px;
 }
 
 /* -----------------------------------------
