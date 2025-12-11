@@ -3,24 +3,32 @@ import { setStateKey } from '../state.js'
 import { renderPostCard } from '../components/post-card.js'
 import { navigateTo } from '../router.js'
 
+// Render the main feed with a list of posts.
 export async function renderFeedView(root) {
-  // Load posts from the API.
-  const posts = await apiGetPosts()
-  console.log('[FEED] posts from API:', posts)
-
-  setStateKey('posts', posts)
+  // Clean root container
+  root.innerHTML = ''
 
   const list = document.createElement('div')
   list.className = 'feed-list'
+  root.appendChild(list)
 
-  if (posts.length === 0) {
-    list.innerHTML = `<p>No posts yet. Be the first to create one!</p>`
-  } else {
-    posts.forEach((p) => {
-      const card = renderPostCard(p, () => navigateTo(`post/${p.id}`))
-      list.appendChild(card)
-    })
+  let posts = []
+  try {
+    posts = await apiGetPosts()
+    setStateKey('posts', posts)
+  } catch (err) {
+    console.error('[FEED] Failed to load posts:', err)
+    list.innerHTML = `<p class="feed-empty">Could not load posts. Please try again.</p>`
+    return
   }
 
-  root.appendChild(list)
+  if (!posts.length) {
+    list.innerHTML = `<p>No posts yet. Be the first to create one!</p>`
+    return
+  }
+
+  posts.forEach((p) => {
+    const card = renderPostCard(p, () => navigateTo(`post/${p.id}`))
+    list.appendChild(card)
+  })
 }

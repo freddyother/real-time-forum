@@ -47,24 +47,29 @@ func writeJSON(w http.ResponseWriter, status int, data any) {
 	_ = json.NewEncoder(w).Encode(data)
 }
 
-// handlePosts responds to requests related to forum posts.
-// Currently supports listing posts with GET.
+// -------------------------------------------------------------------------------------------------------------------
+// handlePosts returns the latest forum posts as JSON.
+// -------------------------------------------------------------------------------------------------------------------
 func (s *Server) handlePosts(w http.ResponseWriter, r *http.Request) {
-	switch r.Method {
-	case http.MethodGet:
-		posts, err := s.posts.List(r.Context(), 100)
-		if err != nil {
-			http.Error(w, "cannot load posts", http.StatusInternalServerError)
-			return
-		}
-
-		writeJSON(w, http.StatusOK, map[string]any{
-			"posts": posts,
-		})
-
-	default:
+	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
 	}
+
+	// Fetch up to 100 posts from the database.
+	posts, err := s.posts.List(r.Context(), 100)
+	if err != nil {
+		log.Println("[POSTS] Error loading posts:", err)
+		http.Error(w, "cannot load posts", http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("[POSTS] Returned %d posts\n", len(posts))
+
+	// Wrap in an object so we can extend the payload later if needed.
+	writeJSON(w, http.StatusOK, map[string]any{
+		"posts": posts,
+	})
 }
 
 // Router configures and returns the main HTTP handler.

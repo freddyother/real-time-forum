@@ -68,13 +68,12 @@ export function apiLogout() {
 }
 
 // Fetch list of posts and always return an array.
-export function apiGetPosts() {
-  return request('/posts').then((data) => {
-    if (!data) return []
-    // Backend returns { posts: [...] }
-    if (Array.isArray(data.posts)) return data.posts
-    return []
-  })
+export async function apiGetPosts() {
+  const data = await request('/posts')
+  const posts = Array.isArray(data.posts) ? data.posts : []
+
+  console.log('[API] apiGetPosts -> posts length:', posts.length)
+  return posts
 }
 
 export function apiGetPost(id) {

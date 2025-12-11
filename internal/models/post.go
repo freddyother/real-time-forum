@@ -62,3 +62,35 @@ func (m *PostModel) List(ctx context.Context, limit int) ([]Post, error) {
 	// Return any scan or iteration error.
 	return posts, rows.Err()
 }
+
+// Create inserts a new post for the given user into the database.
+func (m *PostModel) Create(ctx context.Context, p *Post) error {
+	query := `
+		INSERT INTO posts (user_id, title, content, category)
+		VALUES (?, ?, ?, ?)`
+
+	res, err := m.DB.ExecContext(ctx, query,
+		p.UserID, p.Title, p.Content, p.Category,
+	)
+	if err != nil {
+		return err
+	}
+
+	id, err := res.LastInsertId()
+	if err != nil {
+		return err
+	}
+
+	p.ID = id
+
+	// Load the created_at value from the database so the struct is complete.
+	row := m.DB.QueryRowContext(ctx,
+		`SELECT created_at FROM posts WHERE id = ?`, p.ID,
+	)
+
+	if err := row.Scan(&p.CreatedAt); err != nil {
+		return err
+	}
+
+	return nil
+}
