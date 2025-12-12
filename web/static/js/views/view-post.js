@@ -3,6 +3,7 @@
 // web/static/js/views/view-post.js
 
 import { apiGetPost, apiAddComment } from '../api.js'
+import { navigateTo } from '../router.js'
 
 export async function renderPostView(root, postId) {
   const container = document.createElement('div')
@@ -23,6 +24,9 @@ export async function renderPostView(root, postId) {
   const comments = data.comments || []
 
   container.innerHTML = `
+    <!-- Botón back -->
+    <div class="post-back" id="backToFeed">← Back to Feed</div>
+
     <div class="post-page-card">
       <header class="post-page-header">
         <h1 class="post-page-title">${post.title}</h1>
@@ -78,6 +82,12 @@ export async function renderPostView(root, postId) {
 
   // Paint initial comments
   comments.forEach(appendComment)
+
+  // Back a feed
+  const backBtn = container.querySelector('#backToFeed')
+  backBtn.addEventListener('click', () => {
+    navigateTo('feed')
+  })
 
   // Handle sending new comment
   const form = container.querySelector('#commentForm')

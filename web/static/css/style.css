@@ -343,7 +343,7 @@ textarea:focus {
 ------------------------------------------ */
 .feed-list {
   max-width: 900px;
-  margin: 40px auto;
+  margin: 24px auto;
 }
 
 .feed-empty {
@@ -353,8 +353,8 @@ textarea:focus {
 }
 
 .post-card {
-  padding: 20px 22px;
-  margin-bottom: 18px;
+  padding: 6px 18px;
+  margin-bottom: 1px;
   background: var(--card-bg);
   border: 1px solid var(--card-border);
   border-radius: var(--radius);
@@ -605,6 +605,35 @@ a:hover {
   backdrop-filter: blur(16px);
   box-shadow: var(--shadow-soft);
   padding: 28px 32px;
+}
+
+/* -----------------------------------------
+   POST DETAIL – BACK TO FEED PILL
+------------------------------------------ */
+
+.post-back {
+  display: inline-block;
+  margin: 30px auto 10px;
+  max-width: 900px;
+  padding: 6px 14px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--purple-dark);
+  background: rgba(139, 92, 246, 0.12);
+  border-radius: 999px;
+  cursor: pointer;
+  user-select: none;
+  transition: 0.15s ease;
+}
+
+/* Being inside .post-page, we centre the ‘block’. */
+.post-page > .post-back {
+  display: block;
+}
+
+/* Hover nice */
+.post-back:hover {
+  background: rgba(139, 92, 246, 0.22);
 }
 
 /* Header: title + category */
