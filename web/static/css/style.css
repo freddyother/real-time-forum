@@ -19,6 +19,7 @@
   --shadow-soft: 0 8px 24px rgba(0, 0, 0, 0.08);
 
   --radius: 10px;
+  --sidebar-width: 260px;
 }
 
 /* Global reset */
@@ -71,30 +72,37 @@ body::after {
 ------------------------------------------ */
 .navbar {
   width: 100%;
-  padding: 14px 28px;
+  padding: 12px 28px;
+  min-height: 64px;
   background: rgba(255, 255, 255, 0.55);
   backdrop-filter: blur(14px);
   border-bottom: 1px solid var(--card-border);
   display: flex;
-  justify-content: space-between;
+  justify-content: center;
   align-items: center;
-  position: relative; /* so we can control stacking order */
-  z-index: 20; /* ensure it stays above page content */
+  position: relative;
+  box-sizing: border-box;
 }
 
+/* LEFT BLOCK */
 .nav-left {
-  display: flex; /* make items sit in one row */
+  display: flex;
   align-items: center;
-  gap: 10px; /* space between logo / buttons / avatar */
+  gap: 18px;
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
   font-size: 20px;
   font-weight: bold;
   color: var(--purple-dark);
 }
-
+/* RIGHT BLOCK */
 .nav-right {
   display: flex;
   align-items: center;
-  gap: 12px; /* space between "Hello" and Logout button */
+  gap: 12px;
+  position: absolute;
+  right: 28px;
 }
 
 .nav-user {
@@ -542,7 +550,7 @@ NEW POST – CATEGORY CHIPS
   position: fixed;
   right: 0;
   top: 64px; /* altura aproximada del navbar */
-  width: 260px;
+  width: var(--sidebar-width);
   height: calc(100vh - 64px); /* ocupa el resto de la pantalla */
   padding: 20px;
   background: rgba(255, 255, 255, 0.45);

@@ -98,7 +98,7 @@ function renderRegister(container) {
 
         <input type="email" id="email" placeholder="Email" required>
 
-        <input type="password" id="password" placeholder="Password" required>
+        <input type="password" id="password" placeholder="Password" maxlength="15" required>
 
         <button type="submit">Create account</button>
     </form>
