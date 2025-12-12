@@ -585,3 +585,201 @@ small {
 a:hover {
   opacity: 0.7;
 }
+
+/* -----------------------------------------
+   POST DETAIL 
+   (post-page, post-page-card, comments…)
+------------------------------------------ */
+
+.post-page {
+  max-width: 900px;
+  margin: 40px auto;
+  padding: 0 20px;
+}
+
+/* Main card of the post */
+.post-page-card {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius);
+  backdrop-filter: blur(16px);
+  box-shadow: var(--shadow-soft);
+  padding: 28px 32px;
+}
+
+/* Header: title + category */
+.post-page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.post-page-title {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--purple-dark);
+}
+
+.post-page-category {
+  font-size: 13px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: rgba(139, 92, 246, 0.12);
+  color: var(--purple-dark);
+}
+
+/* Meta: author + date */
+.post-page-meta {
+  display: flex;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-light);
+  margin-bottom: 18px;
+}
+
+/* Main content of the post */
+.post-page-content {
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--text-dark);
+  margin-bottom: 26px;
+}
+
+/* -----------------------------------------
+   COMMENTS SECTION
+------------------------------------------ */
+
+.post-comments {
+  margin-top: 10px;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+  padding-top: 18px;
+}
+
+.comments-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--purple-dark);
+  margin-bottom: 14px;
+}
+
+/* List of comments */
+.comments-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+/* Comment */
+.comment-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+}
+
+.comment-item:last-child {
+  border-bottom: none;
+}
+
+/* Avatar with initial*/
+.comment-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--purple) 0%, var(--purple-light) 100%);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 4px 10px rgba(139, 92, 246, 0.35);
+}
+
+/* comment text*/
+.comment-body {
+  flex: 1;
+}
+
+.comment-header {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.comment-author {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--purple-dark);
+}
+
+.comment-date {
+  font-size: 11px;
+  color: var(--text-light);
+}
+
+.comment-text {
+  margin-top: 4px;
+  font-size: 14px;
+  color: var(--text-dark);
+}
+
+/* -----------------------------------------
+  FORM: ADD COMMENT
+------------------------------------------ */
+
+.comment-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* We overwrite the generic text area only here.*/
+.comment-form textarea {
+  width: 100%;
+  min-height: 90px;
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(12px);
+  font-size: 14px;
+  resize: vertical;
+  outline: none;
+  transition: 0.2s;
+}
+
+.comment-form textarea:focus {
+  border-color: var(--purple);
+  box-shadow: 0 0 4px rgba(139, 92, 246, 0.4);
+}
+
+/* button "Add comment" */
+.comment-form button {
+  align-self: flex-start;
+  padding: 8px 18px;
+  border: none;
+  border-radius: var(--radius);
+  background: var(--purple);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: var(--shadow-soft);
+  transition: 0.15s ease;
+}
+
+.comment-form button:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+.comment-form button:active {
+  transform: translateY(1px);
+  opacity: 0.85;
+}
