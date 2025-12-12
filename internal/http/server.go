@@ -1,3 +1,4 @@
+// internal/httpserver/server.go
 package httpserver
 
 import (
@@ -6,6 +7,8 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"real-time-forum/internal/models"
@@ -19,6 +22,7 @@ type Server struct {
 	users      *models.UserModel
 	posts      *models.PostModel
 	categories *models.CategoryModel
+	comments   *models.CommentModel
 }
 
 // createPostRequest represents the JSON payload used to create a new post.
@@ -36,6 +40,7 @@ func NewServer(db *sql.DB, hub *ws.Hub) *Server {
 		users:      &models.UserModel{DB: db},
 		posts:      &models.PostModel{DB: db},
 		categories: &models.CategoryModel{DB: db},
+		comments:   &models.CommentModel{DB: db},
 	}
 }
 
@@ -62,7 +67,7 @@ func writeJSON(w http.ResponseWriter, status int, data any) {
 }
 
 // -------------------------------------------------------------------------------------------------------------------
-//	handlePosts function
+//	handlePosts function (lista/crea posts)
 // -------------------------------------------------------------------------------------------------------------------
 
 // handlePosts routes GET and POST requests for forum posts.
@@ -108,10 +113,6 @@ func (s *Server) handlePosts(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Ensure the category exists in the categories table.
-		// This call will:
-		//   - Reuse an existing category if it already exists (case-insensitive)
-		//   - Create a new one if there is still room
-		//   - Enforce a hard limit of 30 categories
 		const maxCategories = 30
 
 		cat, err := s.categories.Ensure(r.Context(), req.Category, maxCategories)
@@ -150,6 +151,136 @@ func (s *Server) handlePosts(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// -------------------------------------------------------------------------------------------------------------------
+//	Single post + comments
+// -------------------------------------------------------------------------------------------------------------------
+
+// handlePostDetail decide si la ruta es /api/posts/{id} o /api/posts/{id}/comments
+func (s *Server) handlePostDetail(w http.ResponseWriter, r *http.Request) {
+	if strings.HasSuffix(r.URL.Path, "/comments") {
+		s.handlePostComments(w, r)
+		return
+	}
+	s.handlePostByID(w, r)
+}
+
+// handlePostByID handle GET /api/posts/{id}
+// Devuelve { "post": {...}, "comments": [...] }
+func (s *Server) handlePostByID(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// extraer ID de /api/posts/{id}
+	idStr := strings.TrimPrefix(r.URL.Path, "/api/posts/")
+	if idStr == "" {
+		http.Error(w, "missing post id", http.StatusBadRequest)
+		return
+	}
+	// in case there are sub-routes
+	if idx := strings.IndexRune(idStr, '/'); idx != -1 {
+		idStr = idStr[:idx]
+	}
+
+	postID, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil || postID <= 0 {
+		http.Error(w, "invalid post id", http.StatusBadRequest)
+		return
+	}
+
+	post, err := s.posts.Get(r.Context(), postID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.Error(w, "post not found", http.StatusNotFound)
+			return
+		}
+		log.Println("[POST] Get error:", err)
+		http.Error(w, "cannot load post", http.StatusInternalServerError)
+		return
+	}
+
+	comments, err := s.comments.ListByPost(r.Context(), postID)
+	if err != nil {
+		log.Println("[POST] Comments error:", err)
+		http.Error(w, "cannot load comments", http.StatusInternalServerError)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"post":     post,
+		"comments": comments,
+	})
+}
+
+// handlePostComments handle:
+//
+//	GET  /api/posts/{id}/comments  -> lista comentarios
+//	POST /api/posts/{id}/comments  -> crea comentario
+func (s *Server) handlePostComments(w http.ResponseWriter, r *http.Request) {
+	// r.URL.Path: /api/posts/{id}/comments
+	path := strings.TrimPrefix(r.URL.Path, "/api/posts/")
+	path = strings.TrimSuffix(path, "/comments")
+
+	postID, err := strconv.ParseInt(path, 10, 64)
+	if err != nil || postID <= 0 {
+		http.Error(w, "invalid post id", http.StatusBadRequest)
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		comments, err := s.comments.ListByPost(r.Context(), postID)
+		if err != nil {
+			log.Println("[COMMENTS] List error:", err)
+			http.Error(w, "cannot load comments", http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"comments": comments,
+		})
+
+	case http.MethodPost:
+		userID, ok := getUserIDFromContext(r)
+		if !ok {
+			http.Error(w, "unauthorised", http.StatusUnauthorized)
+			return
+		}
+
+		var req struct {
+			Content string `json:"content"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		req.Content = strings.TrimSpace(req.Content)
+		if req.Content == "" {
+			http.Error(w, "content is required", http.StatusBadRequest)
+			return
+		}
+
+		comment := &models.Comment{
+			PostID:  postID,
+			UserID:  userID,
+			Content: req.Content,
+		}
+
+		if err := s.comments.Create(r.Context(), comment); err != nil {
+			log.Println("[COMMENTS] Create error:", err)
+			http.Error(w, "cannot create comment", http.StatusInternalServerError)
+			return
+		}
+
+		writeJSON(w, http.StatusCreated, map[string]any{
+			"comment": comment,
+		})
+
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
 // Router configures and returns the main HTTP handler.
 func (s *Server) Router() http.Handler {
 	mux := http.NewServeMux()
@@ -161,7 +292,11 @@ func (s *Server) Router() http.Handler {
 	mux.HandleFunc("/api/register", s.handleRegister)
 	mux.HandleFunc("/api/login", s.handleLogin)
 	mux.HandleFunc("/api/logout", s.handleLogout)
+
+	// Lista / crea posts
 	mux.HandleFunc("/api/posts", s.handlePosts)
+	// Detalle post + comentarios
+	mux.HandleFunc("/api/posts/", s.handlePostDetail)
 
 	// WebSocket endpoint.
 	mux.HandleFunc("/ws/chat", s.handleChatWS)

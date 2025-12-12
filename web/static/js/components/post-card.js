@@ -19,9 +19,7 @@ export function renderPostCard(post, onClick) {
       <h3 class="post-title">${title}</h3>
       <span class="post-category">${category}</span>
     </header>
-
-    <p class="post-snippet">${snippet}</p>
-
+  
     <footer class="post-meta">
       <span>by <strong>${author}</strong></span>
       ${created ? `<span> • ${created}</span>` : ''}

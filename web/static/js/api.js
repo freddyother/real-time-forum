@@ -76,10 +76,16 @@ export async function apiGetPosts() {
   return posts
 }
 
-export function apiGetPost(id) {
-  return request(`/posts/${id}`)
+//---------Get Post by Id---------------------------------------
+export async function apiGetPost(id) {
+  const res = await fetch(`/api/posts/${id}`)
+  if (!res.ok) {
+    throw new Error(`apiGetPost failed: ${res.status}`)
+  }
+  return res.json() // { post, comments }
 }
 
+//---------Create Post---------------------------------------
 export async function apiCreatePost(data) {
   const res = await request('/posts', {
     method: 'POST',
@@ -89,12 +95,30 @@ export async function apiCreatePost(data) {
   console.log('[API] apiCreatePost -> created post id:', res.post?.id)
   return res.post
 }
+//---------Get comments---------------------------------------
+export async function apiGetComments(id) {
+  const res = await fetch(`/api/posts/${id}/comments`)
+  if (!res.ok) {
+    throw new Error(`apiGetComments failed: ${res.status}`)
+  }
+  return res.json() // { comments }
+}
 
-export function apiAddComment(postId, data) {
-  return request(`/posts/${postId}/comments`, {
+//---------Add comment to a Post ---------------------------------------
+export async function apiAddComment(postId, content) {
+  const res = await fetch(`/api/posts/${postId}/comments`, {
     method: 'POST',
-    body: JSON.stringify(data),
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ content }),
   })
+
+  if (!res.ok) {
+    throw new Error(`apiAddComment failed: ${res.status}`)
+  }
+
+  return res.json() // { comment }
 }
 
 export function apiGetChatHistory(userId, offset, limit = 10) {

@@ -22,6 +22,40 @@ type PostModel struct {
 	DB *sql.DB
 }
 
+// Get returns a post by ID, with the author's nickname.
+func (m *PostModel) Get(ctx context.Context, id int64) (*Post, error) {
+	const query = `
+		SELECT
+			p.id,
+			p.user_id,
+			p.title,
+			p.content,
+			p.category,
+			p.created_at,
+			u.nickname AS author
+		FROM posts p
+		JOIN users u ON u.id = p.user_id
+		WHERE p.id = ?;
+	`
+
+	var p Post
+
+	err := m.DB.QueryRowContext(ctx, query, id).Scan(
+		&p.ID,
+		&p.UserID,
+		&p.Title,
+		&p.Content,
+		&p.Category,
+		&p.CreatedAt,
+		&p.Author,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return &p, nil
+}
+
 // List returns a collection of posts ordered by creation date (newest first).
 // The returned list size is limited by the provided limit value.
 func (m *PostModel) List(ctx context.Context, limit int) ([]Post, error) {
