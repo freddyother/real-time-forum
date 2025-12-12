@@ -78,16 +78,28 @@ body::after {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  position: relative; /* so we can control stacking order */
+  z-index: 20; /* ensure it stays above page content */
 }
 
 .nav-left {
+  display: flex; /* make items sit in one row */
+  align-items: center;
+  gap: 10px; /* space between logo / buttons / avatar */
   font-size: 20px;
   font-weight: bold;
   color: var(--purple-dark);
 }
 
-.nav-right button {
-  margin-left: 12px;
+.nav-right {
+  display: flex;
+  align-items: center;
+  gap: 12px; /* space between "Hello" and Logout button */
+}
+
+.nav-user {
+  font-size: 14px;
+  color: var(--text-dark);
 }
 
 /* Optional: consistent style for nav buttons */
@@ -105,6 +117,33 @@ body::after {
 
 .nav-btn:hover {
   background: rgba(139, 92, 246, 0.2);
+}
+
+/* -----------------------------------------
+   NAVBAR AVATAR
+------------------------------------------ */
+
+.nav-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--purple) 0%, var(--purple-light) 100%);
+  color: white;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-weight: 600;
+  margin-left: 14px;
+  font-size: 15px;
+  box-shadow: 0 4px 10px rgba(139, 92, 246, 0.35);
+  cursor: default;
+}
+
+/* ACTIVE NAV BUTTON ---------------------------- */
+.nav-btn.active {
+  background: var(--purple);
+  color: white !important;
+  box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
 }
 
 /* -----------------------------------------
@@ -439,7 +478,8 @@ textarea:focus {
 }
 
 /* -----------------------------------------
-NEW POST – CATEGORY CHIPS ------------------------------------------ */
+NEW POST – CATEGORY CHIPS 
+------------------------------------------ */
 
 .category-section {
   margin-top: 4px;
@@ -501,15 +541,16 @@ NEW POST – CATEGORY CHIPS ------------------------------------------ */
 #sidebar-chat {
   position: fixed;
   right: 0;
-  top: 0;
+  top: 64px; /* altura aproximada del navbar */
   width: 260px;
-  height: 100vh;
+  height: calc(100vh - 64px); /* ocupa el resto de la pantalla */
   padding: 20px;
   background: rgba(255, 255, 255, 0.45);
   border-left: 1px solid var(--card-border);
   backdrop-filter: blur(14px);
   overflow-y: auto;
   box-shadow: -4px 0 14px rgba(0, 0, 0, 0.05);
+  z-index: 10; /* por debajo del navbar (que está en 20) */
 }
 
 .chat-user {

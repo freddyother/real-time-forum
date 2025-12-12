@@ -5,7 +5,6 @@ import "database/sql"
 // RunMigrations applies the database schema required by the application.
 // Each statement is idempotent and safe to execute multiple times.
 func RunMigrations(db *sql.DB) error {
-
 	stmts := []string{
 		// Users table: stores account information and credentials.
 		`CREATE TABLE IF NOT EXISTS users (
@@ -21,7 +20,15 @@ func RunMigrations(db *sql.DB) error {
 			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 		);`,
 
+		// Categories table: central store for post categories.
+		`CREATE TABLE IF NOT EXISTS categories (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			name TEXT NOT NULL UNIQUE,
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		);`,
+
 		// Posts table: represents forum posts created by users.
+		// For now we keep category as TEXT. It should match categories.name.
 		`CREATE TABLE IF NOT EXISTS posts (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			user_id INTEGER NOT NULL,
@@ -63,11 +70,30 @@ func RunMigrations(db *sql.DB) error {
 		);`,
 	}
 
-	// Execute each migration in order.
 	for _, stmt := range stmts {
 		if _, err := db.Exec(stmt); err != nil {
 			return err
 		}
+	}
+
+	// Optional: seed a default set of categories (idempotent).
+	seed := `
+		INSERT OR IGNORE INTO categories (name) VALUES
+			('General'),
+			('Tech-support'),
+			('Technology'),
+			('Announcements'),
+			('FAQ'),
+			('Fashion'),
+			('Travel'),
+			('Marketplace'),
+			('Gaming'),
+			('Introductions'),
+			('Go'),
+			('JavaScript');`
+
+	if _, err := db.Exec(seed); err != nil {
+		return err
 	}
 
 	return nil

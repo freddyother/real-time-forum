@@ -13,6 +13,9 @@ export function renderNavbar(root) {
   // If no user is logged in, render nothing.
   if (!user) return
 
+  //avatar
+  const avatarLetter = user.nickname ? user.nickname.charAt(0).toUpperCase() : '?'
+
   const nav = document.createElement('nav')
   nav.className = 'navbar'
 
@@ -22,6 +25,7 @@ export function renderNavbar(root) {
       <button class="nav-btn" data-route="feed">Feed</button>
       <button class="nav-btn" data-route="new-post">New post</button>
       <button class="nav-btn" data-route="chat">Chat</button>
+       <div class="nav-avatar">${avatarLetter}</div>
     </div>
 
     <div class="nav-right">

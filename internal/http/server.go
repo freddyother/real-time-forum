@@ -3,6 +3,7 @@ package httpserver
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"time"
@@ -13,10 +14,11 @@ import (
 
 // Server holds shared application dependencies.
 type Server struct {
-	db    *sql.DB
-	hub   *ws.Hub
-	users *models.UserModel
-	posts *models.PostModel
+	db         *sql.DB
+	hub        *ws.Hub
+	users      *models.UserModel
+	posts      *models.PostModel
+	categories *models.CategoryModel
 }
 
 // createPostRequest represents the JSON payload used to create a new post.
@@ -29,15 +31,20 @@ type createPostRequest struct {
 // NewServer creates a new Server instance with all required components.
 func NewServer(db *sql.DB, hub *ws.Hub) *Server {
 	return &Server{
-		db:    db,
-		hub:   hub,
-		users: &models.UserModel{DB: db},
-		posts: &models.PostModel{DB: db},
+		db:         db,
+		hub:        hub,
+		users:      &models.UserModel{DB: db},
+		posts:      &models.PostModel{DB: db},
+		categories: &models.CategoryModel{DB: db},
 	}
 }
 
+/*
+------------------------------------------------------------
 // handleChatWS upgrades the request to a WebSocket connection
 // and links the client to the Hub using the authenticated user ID.
+----------------------------------------------------------------------
+*/
 func (s *Server) handleChatWS(w http.ResponseWriter, r *http.Request) {
 	userID, ok := getUserIDFromContext(r)
 	if !ok {
@@ -95,15 +102,35 @@ func (s *Server) handlePosts(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		// If the frontend did not send a category, fall back to "General".
 		if req.Category == "" {
 			req.Category = "General"
+		}
+
+		// Ensure the category exists in the categories table.
+		// This call will:
+		//   - Reuse an existing category if it already exists (case-insensitive)
+		//   - Create a new one if there is still room
+		//   - Enforce a hard limit of 30 categories
+		const maxCategories = 30
+
+		cat, err := s.categories.Ensure(r.Context(), req.Category, maxCategories)
+		if err != nil {
+			if errors.Is(err, models.ErrCategoryLimit) {
+				log.Println("[POSTS] Category limit reached")
+				http.Error(w, "category limit reached (30)", http.StatusBadRequest)
+				return
+			}
+			log.Println("[POSTS] Error ensuring category:", err)
+			http.Error(w, "cannot use category", http.StatusInternalServerError)
+			return
 		}
 
 		post := &models.Post{
 			UserID:   userID,
 			Title:    req.Title,
 			Content:  req.Content,
-			Category: req.Category,
+			Category: cat.Name, // use normalised category name from DB
 		}
 
 		if err := s.posts.Create(r.Context(), post); err != nil {
@@ -112,7 +139,7 @@ func (s *Server) handlePosts(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		log.Printf("[POSTS] Created post id=%d by user=%d\n", post.ID, userID)
+		log.Printf("[POSTS] Created post id=%d by user=%d in category=%q\n", post.ID, userID, post.Category)
 
 		writeJSON(w, http.StatusCreated, map[string]any{
 			"post": post,
@@ -127,16 +154,16 @@ func (s *Server) handlePosts(w http.ResponseWriter, r *http.Request) {
 func (s *Server) Router() http.Handler {
 	mux := http.NewServeMux()
 
-	// Frontend assets
+	// Frontend assets.
 	mux.Handle("/", http.FileServer(http.Dir("./web")))
 
-	// API routes
+	// API routes.
 	mux.HandleFunc("/api/register", s.handleRegister)
 	mux.HandleFunc("/api/login", s.handleLogin)
 	mux.HandleFunc("/api/logout", s.handleLogout)
 	mux.HandleFunc("/api/posts", s.handlePosts)
 
-	// WebSocket endpoint
+	// WebSocket endpoint.
 	mux.HandleFunc("/ws/chat", s.handleChatWS)
 
 	// Wrap with session middleware and logging middleware.
