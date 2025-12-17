@@ -1,3 +1,4 @@
+// internal/http/handler_message.go
 package httpserver
 
 import (
@@ -79,7 +80,7 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 
 		msg, err := s.messages.Create(r.Context(), userID, otherID, req.Content)
 		if err != nil {
-			// Create() usa sql.ErrNoRows como señal de "content vacío"
+			// Create() usa sql.ErrNoRows as signal "empty content "
 			if err == sql.ErrNoRows {
 				http.Error(w, "content is required", http.StatusBadRequest)
 				return
