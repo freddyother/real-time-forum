@@ -23,6 +23,7 @@ type Server struct {
 	posts      *models.PostModel
 	categories *models.CategoryModel
 	comments   *models.CommentModel
+	messages   *models.MessageModel
 }
 
 // createPostRequest represents the JSON payload used to create a new post.
@@ -41,6 +42,7 @@ func NewServer(db *sql.DB, hub *ws.Hub) *Server {
 		posts:      &models.PostModel{DB: db},
 		categories: &models.CategoryModel{DB: db},
 		comments:   &models.CommentModel{DB: db},
+		messages:   &models.MessageModel{DB: db},
 	}
 }
 
@@ -215,8 +217,8 @@ func (s *Server) handlePostByID(w http.ResponseWriter, r *http.Request) {
 
 // handlePostComments handle:
 //
-//	GET  /api/posts/{id}/comments  -> lista comentarios
-//	POST /api/posts/{id}/comments  -> crea comentario
+//	GET  /api/posts/{id}/comments  -> list comments
+//	POST /api/posts/{id}/comments  -> create comment
 func (s *Server) handlePostComments(w http.ResponseWriter, r *http.Request) {
 	// r.URL.Path: /api/posts/{id}/comments
 	path := strings.TrimPrefix(r.URL.Path, "/api/posts/")
@@ -293,13 +295,16 @@ func (s *Server) Router() http.Handler {
 	mux.HandleFunc("/api/login", s.handleLogin)
 	mux.HandleFunc("/api/logout", s.handleLogout)
 
-	// Lista / crea posts
+	// List / create posts
 	mux.HandleFunc("/api/posts", s.handlePosts)
-	// Detalle post + comentarios
+	// Detail post + comments
 	mux.HandleFunc("/api/posts/", s.handlePostDetail)
 
 	// WebSocket endpoint.
 	mux.HandleFunc("/ws/chat", s.handleChatWS)
+
+	// handle messages
+	mux.HandleFunc("/api/messages/", s.handleMessages)
 
 	// Wrap with session middleware and logging middleware.
 	handler := s.withSessionMiddleware(mux)

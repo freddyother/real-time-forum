@@ -68,6 +68,11 @@ func RunMigrations(db *sql.DB) error {
 			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			FOREIGN KEY (user_id) REFERENCES users(id)
 		);`,
+		// messages index
+		`CREATE INDEX IF NOT EXISTS idx_messages_pair_time
+			ON messages(from_user_id, to_user_id, sent_at);`,
+
+		`CREATE INDEX IF NOT EXISTS idx_messages_time ON messages(sent_at);`,
 	}
 
 	for _, stmt := range stmts {
