@@ -5,6 +5,7 @@ import { renderNavbar } from './components/navbar.js'
 import { renderChatSidebar } from './views/view-chat.js'
 
 // Helper to mount / remount the navbar when a user is logged in
+
 function mountNavbar() {
   const navbarRoot = document.getElementById('navbar-root')
   if (!navbarRoot) return
@@ -17,7 +18,19 @@ function mountNavbar() {
   renderNavbar(navbarRoot)
 }
 
+// mountChatSidebar
+
+function mountChatSidebar() {
+  const sidebar = document.getElementById('sidebar-chat')
+  if (!sidebar) return
+
+  // optional: clear before
+  sidebar.innerHTML = ''
+  renderChatSidebar(sidebar)
+}
+
 // Helper to remove navbar when the user logs out
+
 function unmountNavbar() {
   const navbarRoot = document.getElementById('navbar-root')
   if (!navbarRoot) return

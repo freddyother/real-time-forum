@@ -305,6 +305,8 @@ func (s *Server) Router() http.Handler {
 
 	// handle messages
 	mux.HandleFunc("/api/messages/", s.handleMessages)
+	// handle users
+	mux.HandleFunc("/api/users", s.handleUsers)
 
 	// Wrap with session middleware and logging middleware.
 	handler := s.withSessionMiddleware(mux)

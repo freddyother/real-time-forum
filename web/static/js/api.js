@@ -124,3 +124,31 @@ export async function apiAddComment(postId, content) {
 export function apiGetChatHistory(userId, offset, limit = 10) {
   return request(`/chat/${userId}?offset=${offset}&limit=${limit}`)
 }
+
+// GET /api/messages/{otherUserId}?offset=0&limit=20
+export async function apiGetMessages(otherUserId, offset = 0, limit = 20) {
+  const res = await fetch(`/api/messages/${otherUserId}?offset=${offset}&limit=${limit}`, {
+    credentials: 'include',
+  })
+  if (!res.ok) throw new Error(`apiGetMessages failed: ${res.status}`)
+  return res.json() // { messages: [...] }
+}
+
+// POST /api/messages/{otherUserId} { content: "..." }
+export async function apiSendMessage(otherUserId, content) {
+  const res = await fetch(`/api/messages/${otherUserId}`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content }),
+  })
+  if (!res.ok) throw new Error(`apiSendMessage failed: ${res.status}`)
+  return res.json() // { message: {...} }
+}
+
+// Returns the user array.
+
+export async function apiGetUsers(limit = 50) {
+  const data = await request(`/users?limit=${limit}`)
+  return Array.isArray(data.users) ? data.users : []
+}
