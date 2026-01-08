@@ -1,5 +1,5 @@
 import { initRouter, navigateTo } from './router.js'
-import { initState, getState, onStateChange } from './state.js'
+import { initState, getState, onStateChange, subscribe } from './state.js'
 import { connectWS, disconnectWS } from './websocket.js'
 import { renderNavbar } from './components/navbar.js'
 import { renderChatSidebar } from './views/view-chat.js'
@@ -18,17 +18,6 @@ function mountNavbar() {
   renderNavbar(navbarRoot)
 }
 
-// mountChatSidebar
-
-function mountChatSidebar() {
-  const sidebar = document.getElementById('sidebar-chat')
-  if (!sidebar) return
-
-  // optional: clear before
-  sidebar.innerHTML = ''
-  renderChatSidebar(sidebar)
-}
-
 // Helper to remove navbar when the user logs out
 
 function unmountNavbar() {
@@ -43,8 +32,7 @@ function bootstrap() {
   // Initialise global state
   initState()
 
-  const sidebar = document.getElementById('sidebar-chat')
-  renderChatSidebar(sidebar)
+  subscribe(() => rerenderChrome())
 
   // React to login / logout changes
   onStateChange('currentUser', (user) => {
@@ -73,6 +61,14 @@ function bootstrap() {
   } else {
     navigateTo('login')
   }
+}
+
+function rerenderChrome() {
+  const navbarRoot = document.getElementById('navbar-root')
+  if (!navbarRoot) renderNavbar(navbarRoot)
+
+  const sidebar = document.getElementById('sidebar-chat')
+  if (sidebar) renderChatSidebar(sidebar)
 }
 
 bootstrap()

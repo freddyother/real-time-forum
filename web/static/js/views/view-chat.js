@@ -106,13 +106,6 @@ export async function renderChatView(root) {
     </div>
   `
 
-  // Sidebar root exists globally in your layout
-  const sidebarRoot = document.getElementById('sidebar-chat')
-  // ✅ render sidebar properly here too (so chat page always has it)
-  if (sidebarRoot) {
-    await renderChatSidebar(sidebarRoot)
-  }
-
   const msgsEl = root.querySelector('#chatMessages')
   const subtitleEl = root.querySelector('#chatSubtitle')
   const form = root.querySelector('#chatForm')

@@ -6,7 +6,7 @@ const state = {
   messagesByUser: {}, // { userId: [ {id, from, to, text, date}, ...] }
 }
 
-const listeners = {}
+const listeners = []
 
 export function initState() {
   // loading localStorage/cookie
@@ -21,9 +21,21 @@ export function setStateKey(key, value) {
   if (listeners[key]) {
     listeners[key].forEach((cb) => cb(value))
   }
+  notify()
 }
 
 export function onStateChange(key, cb) {
   if (!listeners[key]) listeners[key] = []
   listeners[key].push(cb)
+}
+
+export function subscribe(fn) {
+  listeners.push(fn)
+  return () => {
+    listeners = listeners.filter((l) => l !== fn)
+  }
+}
+
+function notify() {
+  for (const fn of listeners) fn()
 }
