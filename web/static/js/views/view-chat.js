@@ -73,6 +73,7 @@ export async function renderChatSidebar(root) {
     item.addEventListener('click', () => {
       // ✅ store selected chat user in global state
       setStateKey('chatWithUserId', u.id)
+      setStateKey('chatWithUserName', u.nickname || 'Unknown')
       // go to chat view (if you are in feed)
       navigateTo('chat')
     })
@@ -86,11 +87,29 @@ export async function renderChatSidebar(root) {
 // ------------------------------------------------------------
 export async function renderChatView(root) {
   // --- Main Layout chat ---
+
+  function formatHHMM(iso) {
+    const d = new Date(iso)
+    if (Number.isNaN(d.getTime())) return ''
+    // HH:mm 24h
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
+  }
+
+  // devuelve true si el scroll está "casi" abajo (tolerancia 30px)
+  function isNearBottom(el, threshold = 30) {
+    return el.scrollHeight - el.scrollTop - el.clientHeight <= threshold
+  }
+
+  // scroll al final
+  function scrollToBottom(el) {
+    el.scrollTop = el.scrollHeight
+  }
+
   root.innerHTML = `
     <div class="chat-page">
       <div class="chat-card">
         <div class="chat-header">
-          <h2 class="chat-title">Chat</h2>
+          <h2 class="chat-title" id="chatTitle">Chat</h2>
           <p class="chat-subtitle" id="chatSubtitle">Select a user to start chatting</p>
         </div>
 
@@ -108,6 +127,7 @@ export async function renderChatView(root) {
 
   const msgsEl = root.querySelector('#chatMessages')
   const subtitleEl = root.querySelector('#chatSubtitle')
+  const titleEl = root.querySelector('#chatTitle')
   const form = root.querySelector('#chatForm')
   const input = root.querySelector('#chatInput')
   const sendBtn = form.querySelector('button')
@@ -126,6 +146,8 @@ export async function renderChatView(root) {
   }
 
   function renderMessages(messages) {
+    const shouldStickToBottom = isNearBottom(msgsEl)
+
     msgsEl.innerHTML = ''
     if (!messages.length) {
       msgsEl.innerHTML = `<div class="chat-empty">No messages yet.</div>`
@@ -140,15 +162,18 @@ export async function renderChatView(root) {
       const row = document.createElement('div')
       row.className = `chat-msg ${isMine ? 'mine' : 'theirs'}`
       row.innerHTML = `
-        <div class="chat-bubble">
-          <div class="chat-text">${escapeHtml(m.content)}</div>
-          <div class="chat-time">${escapeHtml(m.sent_at)}</div>
-        </div>
-      `
+      <div class="chat-bubble">
+        <div class="chat-text">${escapeHtml(m.content)}</div>
+        <div class="chat-time">${escapeHtml(formatHHMM(m.sent_at))}</div>
+      </div>
+    `
       msgsEl.appendChild(row)
     })
 
-    msgsEl.scrollTop = msgsEl.scrollHeight
+    // ✅ solo baja si el usuario estaba abajo
+    if (shouldStickToBottom) {
+      scrollToBottom(msgsEl)
+    }
   }
 
   async function resolveSelectedUserNickname(userId) {
@@ -165,10 +190,13 @@ export async function renderChatView(root) {
   }
 
   // If a user is already selected (from sidebar click), open conversation automatically
+
   if (selectedUserId) {
+    const s = getState()
     const nickname = await resolveSelectedUserNickname(selectedUserId)
 
-    subtitleEl.textContent = nickname ? `Chatting with ${nickname}` : `Chatting…`
+    titleEl.textContent = nickname
+    subtitleEl.textContent = `Chatting…`
     input.disabled = false
     sendBtn.disabled = false
     input.focus()

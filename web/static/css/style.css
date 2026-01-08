@@ -976,7 +976,9 @@ a:hover {
   padding: 10px 6px;
 }
 
+/* --- Telegram/WhatsApp-like bubbles --- */
 /* a message row */
+
 .chat-msg {
   display: flex;
   margin: 10px 0;
@@ -992,20 +994,50 @@ a:hover {
 
 /* bubble */
 .chat-bubble {
-  max-width: min(640px, 78%);
+  position: relative;
+  max-width: min(620px, 78%);
+  padding: 10px 12px 8px;
+  border-radius: 18px;
   border: 1px solid rgba(0, 0, 0, 0.06);
-  border-radius: 16px;
-  padding: 10px 12px;
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.04);
 }
 
 .chat-msg.mine .chat-bubble {
-  background: rgba(139, 92, 246, 0.14);
+  background: rgba(139, 92, 246, 0.16);
   border-color: rgba(139, 92, 246, 0.18);
+  border-bottom-right-radius: 8px;
 }
 
 .chat-msg.theirs .chat-bubble {
   background: rgba(255, 255, 255, 0.75);
+}
+
+.chat-msg.mine .chat-bubble::after {
+  content: '';
+  position: absolute;
+  right: -6px;
+  bottom: 10px;
+  width: 10px;
+  height: 10px;
+  background: rgba(139, 92, 246, 0.16);
+  border-right: 1px solid rgba(139, 92, 246, 0.18);
+  border-bottom: 1px solid rgba(139, 92, 246, 0.18);
+  transform: rotate(45deg);
+  border-bottom-right-radius: 2px;
+}
+
+.chat-msg.theirs .chat-bubble::after {
+  content: '';
+  position: absolute;
+  left: -6px;
+  bottom: 10px;
+  width: 10px;
+  height: 10px;
+  background: rgba(255, 255, 255, 0.9);
+  border-left: 1px solid rgba(0, 0, 0, 0.06);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  transform: rotate(45deg);
+  border-bottom-left-radius: 2px;
 }
 
 .chat-text {
