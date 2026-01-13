@@ -4,7 +4,7 @@ import { renderPostView } from './views/view-post.js'
 import { renderChatView, renderChatSidebar } from './views/view-chat.js'
 import { renderNewPostView } from './views/view-new-post.js'
 
-import { getState } from './state.js'
+import { getState, setStateKey } from './state.js'
 
 let currentView = null
 
@@ -26,6 +26,12 @@ function handleRoute() {
 
   const hash = window.location.hash.slice(1) || 'login'
   const [view, param] = hash.split('/')
+
+  //
+  if (view !== 'chat' && state.chatWithUserId) {
+    setStateKey('chatWithUserId', null)
+    setStateKey('chatWithUserName', null)
+  }
 
   const app = document.getElementById('app')
   app.innerHTML = ''

@@ -18,7 +18,6 @@ function escapeHtml(str) {
 export async function renderChatSidebar(root) {
   const state = getState()
 
-  // ✅ If not logged in: sidebar must be empty
   if (!state.currentUser) {
     root.innerHTML = ''
     return
@@ -38,29 +37,31 @@ export async function renderChatSidebar(root) {
 
   let users = []
   try {
-    users = await apiGetUsers(100) // returns array
+    users = await apiGetUsers(100)
   } catch (err) {
     console.error('Failed to load users:', err)
     list.innerHTML = `<div class="chat-side-empty">Could not load users.</div>`
     return
   }
 
-  // remove myself
-  const meId = state.currentUser?.id
-  users = users.filter((u) => u.id !== meId)
+  const meId = Number(state.currentUser?.id)
+  users = users.filter((u) => Number(u.id) !== meId)
 
   if (!users.length) {
     list.innerHTML = `<div class="chat-side-empty">No other users yet.</div>`
     return
   }
 
-  const selectedId = getState().chatWithUserId || null
+  const selectedId = Number(getState().chatWithUserId) || null
 
   list.innerHTML = ''
   users.forEach((u) => {
+    const uid = Number(u.id)
+    const isActive = selectedId === uid
+
     const item = document.createElement('button')
     item.type = 'button'
-    item.className = 'chat-user-row' + (selectedId === u.id ? ' is-active' : '')
+    item.className = 'chat-user-row' + (isActive ? ' is-active' : '')
 
     item.innerHTML = `
       <div class="chat-user-avatar">${u.nickname ? u.nickname[0].toUpperCase() : '?'}</div>
@@ -71,11 +72,9 @@ export async function renderChatSidebar(root) {
     `
 
     item.addEventListener('click', () => {
-      // ✅ store selected chat user in global state
-      setStateKey('chatWithUserId', u.id)
+      setStateKey('chatWithUserId', uid)
       setStateKey('chatWithUserName', u.nickname || 'Unknown')
-      // go to chat view (if you are in feed)
-      navigateTo('chat')
+      navigateTo(`chat/${uid}`)
     })
 
     list.appendChild(item)
@@ -85,7 +84,7 @@ export async function renderChatSidebar(root) {
 // ------------------------------------------------------------
 // Main chat page (CENTER) : conversation + compose
 // ------------------------------------------------------------
-export async function renderChatView(root) {
+export async function renderChatView(root, param) {
   // --- Main Layout chat ---
 
   function formatHHMM(iso) {
@@ -132,7 +131,12 @@ export async function renderChatView(root) {
   const input = root.querySelector('#chatInput')
   const sendBtn = form.querySelector('button')
 
-  let selectedUserId = getState().chatWithUserId || null
+  const paramId = param ? Number(param) : null
+  if (paramId) {
+    setStateKey('chatWithUserId', paramId)
+  }
+
+  let selectedUserId = Number(getState().chatWithUserId) || null
 
   async function loadConversation(otherId) {
     try {
@@ -256,9 +260,10 @@ export async function renderChatView(root) {
 
   if (selectedUserId) {
     const s = getState()
-    const nickname = s.chatWithUserName || (await resolveSelectedUserNickname(selectedUserId)) || 'Chat'
+    const fallbackName = s.chatWithUserName || null
+    const nickname = (await resolveSelectedUserNickname(selectedUserId)) || fallbackName
 
-    titleEl.textContent = nickname
+    titleEl.textContent = nickname || 'Chat'
     subtitleEl.textContent = `Chatting…`
     input.disabled = false
     sendBtn.disabled = false

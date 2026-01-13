@@ -642,6 +642,16 @@ NEW POST – CATEGORY CHIPS
   transform: translateY(0px);
 }
 
+.chat-user-row.is-active {
+  border-color: rgba(139, 92, 246, 0.35);
+  background: rgba(139, 92, 246, 0.14);
+  box-shadow: 0 6px 16px rgba(139, 92, 246, 0.12);
+}
+
+.chat-user-row.is-active .chat-user-avatar {
+  background: rgba(139, 92, 246, 0.28);
+}
+
 /* -----------------------------------------
   Avatar + text
 ------------------------------------------ */
@@ -1003,10 +1013,12 @@ a:hover {
   padding: 14px 16px;
   border-top: 1px solid rgba(0, 0, 0, 0.06);
   background: rgba(255, 255, 255, 0.45);
+  align-items: center;
 }
 
 .chat-compose input {
   flex: 1;
+  margin: 0;
   height: 42px;
   border-radius: 12px;
   padding: 0 12px;
@@ -1024,6 +1036,11 @@ a:hover {
 
 .chat-compose button {
   height: 42px;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
   padding: 0 14px;
   border-radius: 12px;
   border: 1px solid rgba(139, 92, 246, 0.25);
