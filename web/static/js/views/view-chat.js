@@ -152,7 +152,7 @@ export async function renderChatView(root) {
     const me = state.currentUser.id
 
     // ¿estaba el usuario “abajo” antes de re-render?
-    const nearBottom = msgsEl.scrollHeight - msgsEl.scrollTop - msgsEl.clientHeight < 30
+    const nearBottom = isNearBottom(msgsEl, 30)
 
     msgsEl.innerHTML = ''
     if (!messages.length) {
@@ -160,17 +160,34 @@ export async function renderChatView(root) {
       return
     }
 
-    // 1) AGRUPAR consecutivos por “lado” (mine/theirs)
+    // helpers de tiempo
+    const toMs = (iso) => {
+      const d = new Date(iso)
+      const t = d.getTime()
+      return Number.isNaN(t) ? 0 : t
+    }
+    const TWO_MIN = 2 * 60 * 1000
+
+    // 1) AGRUPAR consecutivos por lado + por tiempo (<= 2 min)
     const groups = []
     for (const m of messages) {
-      const isMine = m.from_user_id === me
-      const side = isMine ? 'mine' : 'theirs'
+      const side = m.from_user_id === me ? 'mine' : 'theirs'
+      const ts = toMs(m.sent_at)
 
       const prev = groups[groups.length - 1]
-      if (!prev || prev.side !== side) {
-        groups.push({ side, items: [m] })
+      if (!prev) {
+        groups.push({ side, items: [m], lastTs: ts })
+        continue
+      }
+
+      const gap = Math.abs(ts - prev.lastTs)
+
+      // cortamos grupo si cambia de lado o si pasaron > 2 min
+      if (prev.side !== side || gap > TWO_MIN) {
+        groups.push({ side, items: [m], lastTs: ts })
       } else {
         prev.items.push(m)
+        prev.lastTs = ts
       }
     }
 
@@ -184,13 +201,11 @@ export async function renderChatView(root) {
         const bubble = document.createElement('div')
         bubble.className = `chat-bubble ${g.side}`
 
-        // si NO es el último del grupo, ocultamos hora
         bubble.innerHTML = `
         <div class="chat-text">${escapeHtml(m.content)}</div>
         ${isLastInGroup ? `<div class="chat-time">${formatHHMM(m.sent_at)}</div>` : ``}
       `
 
-        // marcar primera/última para redondeos “telegram”
         if (idx === 0) bubble.classList.add('is-first')
         if (isLastInGroup) bubble.classList.add('is-last')
 
@@ -201,17 +216,15 @@ export async function renderChatView(root) {
     }
 
     // 3) Auto-scroll SOLO si ya estabas abajo
-    if (nearBottom) msgsEl.scrollTop = msgsEl.scrollHeight
+    if (nearBottom) scrollToBottom(msgsEl)
 
-    // 4) Animación sutil: si venimos de enviar, animar última burbuja “mine”
+    // 4) Animación sutil al enviar (última burbuja mine del último grupo mine)
     if (lastSendNonce > 0) {
-      const lastMineBubble = msgsEl.querySelector('.chat-group.mine .chat-bubble.mine.is-last:last-child')
-      // selector alternativo robusto:
-      const allMineLast = msgsEl.querySelectorAll('.chat-group.mine .chat-bubble.mine.is-last')
-      const target = allMineLast.length ? allMineLast[allMineLast.length - 1] : null
+      const mineLast = msgsEl.querySelectorAll('.chat-bubble.mine.is-last')
+      const target = mineLast.length ? mineLast[mineLast.length - 1] : null
       if (target) {
         target.classList.add('is-new')
-        setTimeout(() => target.classList.remove('is-new'), 250)
+        setTimeout(() => target.classList.remove('is-new'), 200)
       }
       lastSendNonce = 0
     }

@@ -1078,7 +1078,7 @@ Group container
   position: relative;
   display: inline-block;
   max-width: min(620px, 78%);
-  padding: 6px 52px 6px 10px; /* reserva hora a la derecha */
+  padding: 4px 52px 4px 10px; /* reserva hora a la derecha */
   border-radius: 16px;
   border: 1px solid rgba(0, 0, 0, 0.06);
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.04);
@@ -1119,7 +1119,7 @@ Group container
 .chat-time {
   position: absolute;
   right: 10px;
-  bottom: 6px;
+  bottom: 4px;
   font-size: 11px;
   line-height: 1;
   opacity: 0.7;
