@@ -100,7 +100,7 @@ export async function renderChatView(root) {
     return el.scrollHeight - el.scrollTop - el.clientHeight <= threshold
   }
 
-  // scroll al final
+  // scroll to the end
   function scrollToBottom(el) {
     el.scrollTop = el.scrollHeight
   }
@@ -145,8 +145,14 @@ export async function renderChatView(root) {
     }
   }
 
+  let lastSendNonce = 0
+
   function renderMessages(messages) {
-    const shouldStickToBottom = isNearBottom(msgsEl)
+    const state = getState()
+    const me = state.currentUser.id
+
+    // ¿estaba el usuario “abajo” antes de re-render?
+    const nearBottom = msgsEl.scrollHeight - msgsEl.scrollTop - msgsEl.clientHeight < 30
 
     msgsEl.innerHTML = ''
     if (!messages.length) {
@@ -154,26 +160,70 @@ export async function renderChatView(root) {
       return
     }
 
-    const me = getState().currentUser.id
-
-    messages.forEach((m) => {
+    // 1) AGRUPAR consecutivos por “lado” (mine/theirs)
+    const groups = []
+    for (const m of messages) {
       const isMine = m.from_user_id === me
+      const side = isMine ? 'mine' : 'theirs'
 
-      const row = document.createElement('div')
-      row.className = `chat-msg ${isMine ? 'mine' : 'theirs'}`
-      row.innerHTML = `
-      <div class="chat-bubble">
-        <div class="chat-text">${escapeHtml(m.content)}</div>
-        <div class="chat-time">${escapeHtml(formatHHMM(m.sent_at))}</div>
-      </div>
-    `
-      msgsEl.appendChild(row)
-    })
-
-    // ✅ solo baja si el usuario estaba abajo
-    if (shouldStickToBottom) {
-      scrollToBottom(msgsEl)
+      const prev = groups[groups.length - 1]
+      if (!prev || prev.side !== side) {
+        groups.push({ side, items: [m] })
+      } else {
+        prev.items.push(m)
+      }
     }
+
+    // 2) RENDER groups
+    for (const g of groups) {
+      const groupEl = document.createElement('div')
+      groupEl.className = `chat-group ${g.side}`
+
+      g.items.forEach((m, idx) => {
+        const isLastInGroup = idx === g.items.length - 1
+        const bubble = document.createElement('div')
+        bubble.className = `chat-bubble ${g.side}`
+
+        // si NO es el último del grupo, ocultamos hora
+        bubble.innerHTML = `
+        <div class="chat-text">${escapeHtml(m.content)}</div>
+        ${isLastInGroup ? `<div class="chat-time">${formatHHMM(m.sent_at)}</div>` : ``}
+      `
+
+        // marcar primera/última para redondeos “telegram”
+        if (idx === 0) bubble.classList.add('is-first')
+        if (isLastInGroup) bubble.classList.add('is-last')
+
+        groupEl.appendChild(bubble)
+      })
+
+      msgsEl.appendChild(groupEl)
+    }
+
+    // 3) Auto-scroll SOLO si ya estabas abajo
+    if (nearBottom) msgsEl.scrollTop = msgsEl.scrollHeight
+
+    // 4) Animación sutil: si venimos de enviar, animar última burbuja “mine”
+    if (lastSendNonce > 0) {
+      const lastMineBubble = msgsEl.querySelector('.chat-group.mine .chat-bubble.mine.is-last:last-child')
+      // selector alternativo robusto:
+      const allMineLast = msgsEl.querySelectorAll('.chat-group.mine .chat-bubble.mine.is-last')
+      const target = allMineLast.length ? allMineLast[allMineLast.length - 1] : null
+      if (target) {
+        target.classList.add('is-new')
+        setTimeout(() => target.classList.remove('is-new'), 250)
+      }
+      lastSendNonce = 0
+    }
+  }
+
+  // --- helpers ---
+  function formatHHMM(iso) {
+    const d = new Date(iso)
+    // HH:MM en local
+    const hh = String(d.getHours()).padStart(2, '0')
+    const mm = String(d.getMinutes()).padStart(2, '0')
+    return `${hh}:${mm}`
   }
 
   async function resolveSelectedUserNickname(userId) {
@@ -193,7 +243,7 @@ export async function renderChatView(root) {
 
   if (selectedUserId) {
     const s = getState()
-    const nickname = await resolveSelectedUserNickname(selectedUserId)
+    const nickname = s.chatWithUserName || (await resolveSelectedUserNickname(selectedUserId)) || 'Chat'
 
     titleEl.textContent = nickname
     subtitleEl.textContent = `Chatting…`
@@ -217,6 +267,7 @@ export async function renderChatView(root) {
 
     try {
       await apiSendMessage(selectedUserId, content)
+      lastSendNonce++
       await loadConversation(selectedUserId)
     } catch (err) {
       console.error('send message failed:', err)

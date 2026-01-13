@@ -976,71 +976,6 @@ a:hover {
   padding: 10px 6px;
 }
 
-/* --- Telegram/WhatsApp-like bubbles --- */
-/* a message row */
-
-.chat-msg {
-  display: flex;
-  margin: 10px 0;
-}
-
-.chat-msg.mine {
-  justify-content: flex-end;
-}
-
-.chat-msg.theirs {
-  justify-content: flex-start;
-}
-
-/* bubble */
-.chat-bubble {
-  position: relative;
-  display: inline-block;
-
-  padding: 2px 52px 2px 10px;
-  border-radius: 18px;
-  border: 1px solid rgba(0, 0, 0, 0.06);
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.04);
-}
-
-.chat-msg.mine .chat-bubble {
-  background: rgba(139, 92, 246, 0.16);
-  border-color: rgba(139, 92, 246, 0.18);
-  border-bottom-right-radius: 8px;
-}
-
-.chat-msg.theirs .chat-bubble {
-  background: rgba(255, 255, 255, 0.75);
-}
-
-.chat-msg.mine .chat-bubble::after {
-  content: '';
-  position: absolute;
-  right: -6px;
-  bottom: 10px;
-  width: 10px;
-  height: 10px;
-  background: rgba(139, 92, 246, 0.16);
-  border-right: 1px solid rgba(139, 92, 246, 0.18);
-  border-bottom: 1px solid rgba(139, 92, 246, 0.18);
-  transform: rotate(45deg);
-  border-bottom-right-radius: 2px;
-}
-
-.chat-msg.theirs .chat-bubble::after {
-  content: '';
-  position: absolute;
-  left: -6px;
-  bottom: 10px;
-  width: 10px;
-  height: 10px;
-  background: rgba(255, 255, 255, 0.9);
-  border-left: 1px solid rgba(0, 0, 0, 0.06);
-  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
-  transform: rotate(45deg);
-  border-bottom-left-radius: 2px;
-}
-
 .chat-text {
   font-size: 13px;
   color: var(--text-dark);
@@ -1056,7 +991,7 @@ a:hover {
   font-size: 11px;
   line-height: 1;
   opacity: 0.7;
-  margin: 0; /* 👈 importante: nada de margin-top */
+  margin: 0; /* no margin-top */
   pointer-events: none;
   opacity: 0.6;
 }
@@ -1119,4 +1054,91 @@ a:hover {
   .chat-messages {
     height: calc(100vh - 64px - 220px);
   }
+}
+
+/* ------------------------------------------------------
+Group container
+--------------------------------------------------------- */
+.chat-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px; /* dentro del grupo, poco espacio */
+  margin: 10px 0; /* entre grupos, más aire */
+}
+
+.chat-group.mine {
+  align-items: flex-end;
+}
+.chat-group.theirs {
+  align-items: flex-start;
+}
+
+/* burbuja base */
+.chat-bubble {
+  position: relative;
+  display: inline-block;
+  max-width: min(620px, 78%);
+  padding: 6px 52px 6px 10px; /* reserva hora a la derecha */
+  border-radius: 16px;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.04);
+}
+
+/* colores separados (evita “mezcla rara” a la derecha) */
+.chat-bubble.mine {
+  background: rgba(139, 92, 246, 0.14);
+  border-color: rgba(139, 92, 246, 0.18);
+}
+
+.chat-bubble.theirs {
+  background: rgba(255, 255, 255, 0.8);
+}
+
+/* redondeo “grupo” (más tipo Telegram/WhatsApp) */
+.chat-bubble.mine.is-first {
+  border-top-right-radius: 16px;
+}
+.chat-bubble.mine:not(.is-first) {
+  border-top-right-radius: 8px;
+}
+.chat-bubble.mine.is-last {
+  border-bottom-right-radius: 16px;
+}
+
+.chat-bubble.theirs.is-first {
+  border-top-left-radius: 16px;
+}
+.chat-bubble.theirs:not(.is-first) {
+  border-top-left-radius: 8px;
+}
+.chat-bubble.theirs.is-last {
+  border-bottom-left-radius: 16px;
+}
+
+/* hora pegada a la última línea (solo existe en último del grupo) */
+.chat-time {
+  position: absolute;
+  right: 10px;
+  bottom: 6px;
+  font-size: 11px;
+  line-height: 1;
+  opacity: 0.7;
+  margin: 0;
+  pointer-events: none;
+}
+
+/* animación sutil al enviar */
+@keyframes bubble-pop {
+  from {
+    transform: translateY(2px) scale(0.98);
+    opacity: 0.7;
+  }
+  to {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+
+.chat-bubble.is-new {
+  animation: bubble-pop 160ms ease-out;
 }
