@@ -235,7 +235,7 @@ export async function renderChatView(root, param) {
     loadingMore = false
   }
 
-  // scroll arriba -> cargar más
+  // scroll up -> loading more
   msgsEl.addEventListener('scroll', () => {
     const currentId = Number(getState().chatWithUserId) || null
     if (!currentId) return

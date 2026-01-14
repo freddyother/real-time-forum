@@ -1180,10 +1180,11 @@ Group container
 /* --- Double check (only mine) --- */
 .chat-status {
   position: absolute;
-  right: 2px; /* left side */
+  right: 5px; /* left side */
   bottom: 3px;
   font-size: 11px;
   line-height: 1;
+  letter-spacing: -3px;
   opacity: 0.5;
   pointer-events: none;
 }
