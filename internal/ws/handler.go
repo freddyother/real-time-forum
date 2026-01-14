@@ -1,6 +1,7 @@
 package ws
 
 import (
+	"log"
 	"net/http"
 
 	"github.com/gorilla/websocket"
@@ -21,6 +22,8 @@ func (h *Hub) HandleChat(w http.ResponseWriter, r *http.Request, userID int64) {
 	// Attempt to establish a WebSocket connection.
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
+		// Log upgrade failures for debugging.
+		log.Printf("[WS] Upgrade failed: %v", err)
 		return
 	}
 

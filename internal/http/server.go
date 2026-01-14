@@ -2,10 +2,12 @@
 package httpserver
 
 import (
+	"bufio"
 	"database/sql"
 	"encoding/json"
 	"errors"
 	"log"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -53,11 +55,24 @@ func NewServer(db *sql.DB, hub *ws.Hub) *Server {
 ----------------------------------------------------------------------
 */
 func (s *Server) handleChatWS(w http.ResponseWriter, r *http.Request) {
+
+	// Log incoming WS attempts.
+	log.Printf("[WS] Incoming %s %s from=%s", r.Method, r.URL.Path, r.RemoteAddr)
+
+	// Only allow GET requests for WebSocket upgrade.
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// User must be authenticated (set by withSessionMiddleware).
 	userID, ok := getUserIDFromContext(r)
 	if !ok {
 		http.Error(w, "unauthorised", http.StatusUnauthorized)
 		return
 	}
+
+	// Upgrade the connection and register the client in the hub.
 	s.hub.HandleChat(w, r, userID)
 }
 
@@ -322,6 +337,22 @@ type loggingResponseWriter struct {
 func (lrw *loggingResponseWriter) WriteHeader(code int) {
 	lrw.status = code
 	lrw.ResponseWriter.WriteHeader(code)
+}
+
+// Hijack passes through the http.Hijacker interface (required for WebSockets).
+func (lrw *loggingResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	hj, ok := lrw.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, errors.New("hijacker not supported")
+	}
+	return hj.Hijack()
+}
+
+// Flush passes through the http.Flusher interface (nice for streaming).
+func (lrw *loggingResponseWriter) Flush() {
+	if f, ok := lrw.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
 }
 
 // loggingMiddleware logs method, path, status and duration for each request.

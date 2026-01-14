@@ -6,13 +6,19 @@ type Hub struct {
 	register   chan *Client     // incoming client connections
 	unregister chan *Client     // disconnected clients
 	broadcast  chan Message     // messages to be delivered
+	// OnMessage is called when a client sends a message.
+	// It allows the app layer (httpserver) to persist messages before broadcast.
+	OnMessage func(in Message) (Message, error)
 }
 
 // Message represents a private message exchanged between two users.
 type Message struct {
+	ID         int64  `json:"id,omitempty"`
 	FromUserID int64  `json:"from_user_id"`
 	ToUserID   int64  `json:"to_user_id"`
 	Text       string `json:"text"`
+	SentAt     string `json:"sent_at,omitempty"`
+	Seen       bool   `json:"seen,omitempty"`
 }
 
 // NewHub creates a new Hub with initialised channels and storage.

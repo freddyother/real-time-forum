@@ -22,7 +22,18 @@ func (c *Client) readPump() {
 		if err := c.conn.ReadJSON(&msg); err != nil {
 			break
 		}
+
+		// Always trust the authenticated user from the WS connection.
 		msg.FromUserID = c.userID
+
+		// Persist message if callback exists.
+		if c.hub.OnMessage != nil {
+			saved, err := c.hub.OnMessage(msg)
+			if err == nil {
+				msg = saved
+			}
+		}
+
 		c.hub.broadcast <- msg
 	}
 }
