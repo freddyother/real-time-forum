@@ -1,6 +1,21 @@
 package db
 
-import "database/sql"
+import (
+	"database/sql"
+	"strings"
+)
+
+func execIgnoreDuplicateColumn(db *sql.DB, stmt string) error {
+	_, err := db.Exec(stmt)
+	if err == nil {
+		return nil
+	}
+	// SQLite error message example: "duplicate column name: seen"
+	if strings.Contains(strings.ToLower(err.Error()), "duplicate column name") {
+		return nil
+	}
+	return err
+}
 
 // RunMigrations applies the database schema required by the application.
 // Each statement is idempotent and safe to execute multiple times.
@@ -73,6 +88,19 @@ func RunMigrations(db *sql.DB) error {
 			ON messages(from_user_id, to_user_id, sent_at);`,
 
 		`CREATE INDEX IF NOT EXISTS idx_messages_time ON messages(sent_at);`,
+	}
+
+	// --- Messages "seen" fields (idempotent on SQLite) ---
+	if err := execIgnoreDuplicateColumn(db, `ALTER TABLE messages ADD COLUMN seen INTEGER NOT NULL DEFAULT 0;`); err != nil {
+		return err
+	}
+
+	if err := execIgnoreDuplicateColumn(db, `ALTER TABLE messages ADD COLUMN seen_at DATETIME;`); err != nil {
+		return err
+	}
+	// Fast lookup for unread messages for a given recipient.
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_messages_to_seen ON messages(to_user_id, seen, sent_at);`); err != nil {
+		return err
 	}
 
 	for _, stmt := range stmts {

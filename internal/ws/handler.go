@@ -31,7 +31,7 @@ func (h *Hub) HandleChat(w http.ResponseWriter, r *http.Request, userID int64) {
 	client := &Client{
 		hub:    h,
 		conn:   conn,
-		send:   make(chan Message, 256),
+		send:   make(chan MessageEvent, 256),
 		userID: userID,
 	}
 

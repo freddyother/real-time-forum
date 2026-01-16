@@ -3,6 +3,7 @@ package httpserver
 
 import (
 	"bufio"
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -37,7 +38,7 @@ type createPostRequest struct {
 
 // NewServer creates a new Server instance with all required components.
 func NewServer(db *sql.DB, hub *ws.Hub) *Server {
-	return &Server{
+	s := &Server{
 		db:         db,
 		hub:        hub,
 		users:      &models.UserModel{DB: db},
@@ -46,6 +47,22 @@ func NewServer(db *sql.DB, hub *ws.Hub) *Server {
 		comments:   &models.CommentModel{DB: db},
 		messages:   &models.MessageModel{DB: db},
 	}
+
+	// Wire WS persistence (save to DB before broadcast).
+	hub.OnMessage = func(ctx context.Context, in ws.MessageEvent) (ws.MessageEvent, error) {
+		// Save the message in DB and return the persisted message.
+		msg, err := s.messages.Create(ctx, in.FromUserID, in.ToUserID, in.Content)
+		if err != nil {
+			return in, err
+		}
+
+		in.ID = msg.ID
+		in.SentAt = msg.SentAt.UTC().Format(time.RFC3339)
+		in.Seen = false
+		return in, nil
+	}
+
+	return s
 }
 
 /*
@@ -84,7 +101,7 @@ func writeJSON(w http.ResponseWriter, status int, data any) {
 }
 
 // -------------------------------------------------------------------------------------------------------------------
-//	handlePosts function (lista/crea posts)
+//	handlePosts function (list/create posts)
 // -------------------------------------------------------------------------------------------------------------------
 
 // handlePosts routes GET and POST requests for forum posts.

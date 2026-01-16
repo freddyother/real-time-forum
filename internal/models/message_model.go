@@ -23,7 +23,7 @@ func (m *MessageModel) ListBetween(ctx context.Context, userID, otherUserID int6
 	// We fetch newest first, apply LIMIT/OFFSET, then reverse to oldest->newest.
 	// This gives stable pagination and renders nicely in UI.
 	const q = `
-SELECT id, from_user_id, to_user_id, content, sent_at
+SELECT id, from_user_id, to_user_id, content, sent_at, seen, seen_at
 FROM messages
 WHERE (from_user_id = ? AND to_user_id = ?)
    OR (from_user_id = ? AND to_user_id = ?)
@@ -36,15 +36,25 @@ LIMIT ? OFFSET ?;
 		return nil, err
 	}
 	defer rows.Close()
-
+	var seenInt int
+	var seenAt sql.NullTime
 	var tmp []Message
 	for rows.Next() {
 		var msg Message
-		if err := rows.Scan(&msg.ID, &msg.FromUserID, &msg.ToUserID, &msg.Content, &msg.SentAt); err != nil {
+		if err := rows.Scan(
+			&msg.ID, &msg.FromUserID, &msg.ToUserID, &msg.Content, &msg.SentAt,
+			&seenInt, &seenAt,
+		); err != nil {
 			return nil, err
+		}
+		msg.Seen = seenInt == 1
+		if seenAt.Valid {
+			t := seenAt.Time
+			msg.SeenAt = &t
 		}
 		tmp = append(tmp, msg)
 	}
+
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
