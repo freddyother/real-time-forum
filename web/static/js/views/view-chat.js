@@ -249,10 +249,78 @@ export async function renderChatView(root, param) {
     sendWS({ type: 'delivered', message_id: Number(evMsg.id) })
   }
 
-  function sendSeenNow(otherId) {
-    if (!otherId) return
-    sendWS({ type: 'seen', from_user_id: Number(otherId) })
+  // ---------------------------
+  // Seen: debounce/cooldown + visible + active chat guard
+  // ---------------------------
+  const SEEN_COOLDOWN_MS = 1000 // 500 o 1000 (recomendado 1000)
+  let lastSeenSentAt = 0
+  let seenTimer = null
+  let pendingSeenOtherId = null
+
+  function isChatActive(otherId) {
+    const current = Number(getState().chatWithUserId) || null
+    return current != null && Number(current) === Number(otherId)
   }
+
+  function canSendSeenNow(otherId) {
+    if (!otherId) return false
+    if (document.visibilityState !== 'visible') return false
+    if (!isChatActive(otherId)) return false
+    return true
+  }
+
+  function sendSeenNow(otherId) {
+    if (!canSendSeenNow(otherId)) return
+    if (!isNearBottom(msgsEl, 80)) return
+
+    sendWS({
+      type: 'seen',
+      from_user_id: Number(otherId),
+    })
+
+    lastSeenSentAt = Date.now()
+  }
+
+  function scheduleSeen(otherId, _reason = '') {
+    if (!otherId) return
+    if (!canSendSeenNow(otherId)) return
+    if (!isNearBottom(msgsEl, 80)) return
+
+    pendingSeenOtherId = Number(otherId)
+
+    const now = Date.now()
+    const remaining = SEEN_COOLDOWN_MS - (now - lastSeenSentAt)
+
+    if (remaining <= 0) {
+      if (seenTimer) {
+        clearTimeout(seenTimer)
+        seenTimer = null
+      }
+      sendSeenNow(pendingSeenOtherId)
+      pendingSeenOtherId = null
+      return
+    }
+
+    if (seenTimer) return
+
+    seenTimer = setTimeout(() => {
+      seenTimer = null
+      if (pendingSeenOtherId && canSendSeenNow(pendingSeenOtherId)) {
+        sendSeenNow(pendingSeenOtherId)
+      }
+      pendingSeenOtherId = null
+    }, remaining)
+  }
+
+  function onVisibilityChange() {
+    const otherId = Number(getState().chatWithUserId) || null
+    if (!otherId) return
+    if (document.visibilityState === 'visible') {
+      scheduleSeen(otherId, 'tab-visible')
+    }
+  }
+
+  document.addEventListener('visibilitychange', onVisibilityChange)
 
   // ---------------------------
   // Pagination
@@ -276,7 +344,7 @@ export async function renderChatView(root, param) {
     renderMessages(allMessages, { preserveScroll: false })
     scrollToBottom(msgsEl)
 
-    sendSeenNow(otherId)
+    scheduleSeen(otherId, 'open-chat')
   }
 
   async function loadMoreTop(otherId) {
@@ -314,13 +382,16 @@ export async function renderChatView(root, param) {
     loadingMore = false
   }
 
+  // Scroll handler: load older + schedule seen when user reaches bottom
   msgsEl.addEventListener('scroll', () => {
     const currentId = Number(getState().chatWithUserId) || null
     if (!currentId) return
+
     if (msgsEl.scrollTop < 40) loadMoreTop(currentId)
 
-    // When user scrolls to bottom, mark seen
-    if (isNearBottom(msgsEl, 50)) sendSeenNow(currentId)
+    if (isNearBottom(msgsEl, 80)) {
+      scheduleSeen(currentId, 'scroll-bottom')
+    }
   })
 
   // ---------------------------
@@ -404,8 +475,8 @@ export async function renderChatView(root, param) {
 
         const isMine = g.side === 'mine'
 
-        // ✅ Correct status flow:
-        // pending (no id yet): ✓ (or a clock)
+        // Status flow:
+        // pending (no id yet): ✓
         // sent (has id): ✓
         // delivered: ✓✓ grey
         // seen: ✓✓ blue
@@ -420,7 +491,7 @@ export async function renderChatView(root, param) {
 
           if (pending) {
             statusText = '✓'
-            statusClass = 'is-pending'
+            statusClass = 'is-sent'
           } else if (sent && !delivered && !seen) {
             statusText = '✓'
             statusClass = 'is-sent'
@@ -489,8 +560,9 @@ export async function renderChatView(root, param) {
       upsertMessageByIdOrTemp(ev)
       ackDeliveredIfNeeded(ev)
 
+      // If incoming and we're in active/visible chat, schedule seen (debounced).
       if (Number(ev.from_user_id) === otherId && Number(ev.to_user_id) === me) {
-        if (isNearBottom(msgsEl, 80)) sendSeenNow(otherId)
+        scheduleSeen(otherId, 'incoming-message')
       }
 
       renderMessages(allMessages, { preserveScroll: false })
@@ -572,10 +644,15 @@ export async function renderChatView(root, param) {
     })
   })
 
+  // Cleanup
   window.addEventListener(
     'hashchange',
     () => {
       unsubscribe()
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+      if (seenTimer) clearTimeout(seenTimer)
+      seenTimer = null
+      pendingSeenOtherId = null
     },
     { once: true }
   )
