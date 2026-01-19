@@ -13,12 +13,30 @@ type MessageEvent struct {
 	FromUserID int64  `json:"from_user_id"`
 	ToUserID   int64  `json:"to_user_id"`
 	Content    string `json:"content"`
-	SentAt     string `json:"sent_at"`           // RFC3339 string for frontend
-	Seen       bool   `json:"seen"`              // later
-	TempID     string `json:"temp_id,omitempty"` // used to reconcile optimistic UI
+	SentAt     string `json:"sent_at"`           // RFC3339 for frontend
+	Seen       bool   `json:"seen"`              // optional shortcut (or compute from seen_at)
+	TempID     string `json:"temp_id,omitempty"` // optimistic UI reconciliation
 }
 
-// Hub manages all active WebSocket clients and routes messages between them.
+// DeliveredEvent means "the recipient received it" (WS reached recipient).
+type DeliveredEvent struct {
+	Type        string `json:"type"` // "delivered"
+	MessageID   int64  `json:"message_id"`
+	FromUserID  int64  `json:"from_user_id"`
+	ToUserID    int64  `json:"to_user_id"`
+	DeliveredAt string `json:"delivered_at,omitempty"` // RFC3339 optional
+}
+
+// SeenEvent means "the recipient opened the conversation and saw messages".
+type SeenEvent struct {
+	Type       string `json:"type"`         // "seen"
+	FromUserID int64  `json:"from_user_id"` // original sender
+	ToUserID   int64  `json:"to_user_id"`   // viewer (who saw)
+	SeenUpToID int64  `json:"seen_up_to_id,omitempty"`
+	SeenAt     string `json:"seen_at,omitempty"` // RFC3339 optional
+}
+
+// Hub manages all active WebSocket clients and routes events between them.
 type Hub struct {
 	mu sync.RWMutex
 
@@ -27,12 +45,19 @@ type Hub struct {
 
 	register   chan *Client
 	unregister chan *Client
-	broadcast  chan MessageEvent
+
+	// broadcast is for chat messages (persisted and normalized).
+	broadcast chan MessageEvent
 
 	// OnMessage persists the message (DB) and returns the final event to broadcast.
 	OnMessage func(ctx context.Context, in MessageEvent) (MessageEvent, error)
+
+	// Optional: callbacks for receipts (you will wire these in server.NewServer later).
+	OnDelivered func(ctx context.Context, receiverID, messageID int64) (fromUserID int64, deliveredAtRFC3339 string, err error)
+	OnSeen      func(ctx context.Context, viewerID, otherUserID int64) (fromUserID int64, toUserID int64, seenUpToID int64, seenAtRFC3339 string, err error)
 }
 
+// NewHub creates a new Hub with initialized channels and storage.
 func NewHub() *Hub {
 	return &Hub{
 		clientsByUser: make(map[int64]map[*Client]bool),
@@ -42,6 +67,7 @@ func NewHub() *Hub {
 	}
 }
 
+// Run listens for register/unregister and broadcast events.
 func (h *Hub) Run() {
 	for {
 		select {
@@ -78,7 +104,8 @@ func (h *Hub) Run() {
 	}
 }
 
-func (h *Hub) sendToUser(userID int64, msg MessageEvent) {
+// sendToUser sends any WS event to all connected tabs for a given user.
+func (h *Hub) sendToUser(userID int64, payload any) {
 	h.mu.RLock()
 	set := h.clientsByUser[userID]
 	h.mu.RUnlock()
@@ -88,7 +115,7 @@ func (h *Hub) sendToUser(userID int64, msg MessageEvent) {
 
 	for c := range set {
 		select {
-		case c.send <- msg:
+		case c.send <- payload:
 		default:
 			// If the client cannot receive, assume it's dead.
 			h.mu.Lock()

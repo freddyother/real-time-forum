@@ -20,10 +20,11 @@ func (m *MessageModel) ListBetween(ctx context.Context, userID, otherUserID int6
 		offset = 0
 	}
 
-	// We fetch newest first, apply LIMIT/OFFSET, then reverse to oldest->newest.
-	// This gives stable pagination and renders nicely in UI.
+	// ListBetween returns messages between userID and otherUserID ordered oldest->newest.
 	const q = `
-SELECT id, from_user_id, to_user_id, content, sent_at, seen, seen_at
+SELECT id, from_user_id, to_user_id, content, sent_at,
+       delivered, delivered_at,
+       seen, seen_at
 FROM messages
 WHERE (from_user_id = ? AND to_user_id = ?)
    OR (from_user_id = ? AND to_user_id = ?)
@@ -36,8 +37,12 @@ LIMIT ? OFFSET ?;
 		return nil, err
 	}
 	defer rows.Close()
+
+	var deliveredInt int
+	var deliveredAt sql.NullTime
 	var seenInt int
 	var seenAt sql.NullTime
+
 	var tmp []Message
 	for rows.Next() {
 		var msg Message
@@ -46,6 +51,16 @@ LIMIT ? OFFSET ?;
 			&seenInt, &seenAt,
 		); err != nil {
 			return nil, err
+		}
+		msg.Delivered = deliveredInt == 1
+		if deliveredAt.Valid {
+			t := deliveredAt.Time
+			msg.DeliveredAt = &t
+		}
+		msg.Seen = seenInt == 1
+		if seenAt.Valid {
+			t := seenAt.Time
+			msg.SeenAt = &t
 		}
 		msg.Seen = seenInt == 1
 		if seenAt.Valid {
@@ -88,4 +103,48 @@ RETURNING id, from_user_id, to_user_id, content, sent_at;
 	}
 
 	return &msg, nil
+}
+
+// MarkDelivered marks a message as delivered (receiver got it via WS).
+func (m *MessageModel) MarkDelivered(ctx context.Context, messageID, receiverID int64) error {
+	const q = `
+UPDATE messages
+SET delivered = 1,
+    delivered_at = COALESCE(delivered_at, CURRENT_TIMESTAMP)
+WHERE id = ?
+  AND to_user_id = ?
+  AND delivered = 0;
+`
+	_, err := m.DB.ExecContext(ctx, q, messageID, receiverID)
+	return err
+}
+
+// MarkSeenBetween marks as seen all messages sent to viewerID from otherUserID.
+func (m *MessageModel) MarkSeenBetween(ctx context.Context, viewerID, otherUserID int64) (seenUpToID int64, err error) {
+	// 1) Find max message id that should be marked as seen.
+	const qMax = `
+SELECT COALESCE(MAX(id), 0)
+FROM messages
+WHERE from_user_id = ?
+  AND to_user_id = ?;
+`
+	if err := m.DB.QueryRowContext(ctx, qMax, otherUserID, viewerID).Scan(&seenUpToID); err != nil {
+		return 0, err
+	}
+	if seenUpToID == 0 {
+		return 0, nil
+	}
+
+	// 2) Mark seen up to that id (only incoming messages).
+	const qUpd = `
+UPDATE messages
+SET seen = 1,
+    seen_at = COALESCE(seen_at, CURRENT_TIMESTAMP)
+WHERE from_user_id = ?
+  AND to_user_id = ?
+  AND id <= ?
+  AND seen = 0;
+`
+	_, err = m.DB.ExecContext(ctx, qUpd, otherUserID, viewerID, seenUpToID)
+	return seenUpToID, err
 }

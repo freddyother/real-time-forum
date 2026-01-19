@@ -43,7 +43,6 @@ func RunMigrations(db *sql.DB) error {
 		);`,
 
 		// Posts table: represents forum posts created by users.
-		// For now we keep category as TEXT. It should match categories.name.
 		`CREATE TABLE IF NOT EXISTS posts (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			user_id INTEGER NOT NULL,
@@ -66,6 +65,7 @@ func RunMigrations(db *sql.DB) error {
 		);`,
 
 		// Messages table: stores private messages exchanged between users.
+		// "seen/delivered" columns are added via ALTER TABLE to stay idempotent.
 		`CREATE TABLE IF NOT EXISTS messages (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			from_user_id INTEGER NOT NULL,
@@ -83,33 +83,45 @@ func RunMigrations(db *sql.DB) error {
 			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			FOREIGN KEY (user_id) REFERENCES users(id)
 		);`,
-		// messages index
+
+		// Indices for messages listing.
 		`CREATE INDEX IF NOT EXISTS idx_messages_pair_time
 			ON messages(from_user_id, to_user_id, sent_at);`,
 
-		`CREATE INDEX IF NOT EXISTS idx_messages_time ON messages(sent_at);`,
+		`CREATE INDEX IF NOT EXISTS idx_messages_time
+			ON messages(sent_at);`,
 	}
 
-	// --- Messages "seen" fields (idempotent on SQLite) ---
-	if err := execIgnoreDuplicateColumn(db, `ALTER TABLE messages ADD COLUMN seen INTEGER NOT NULL DEFAULT 0;`); err != nil {
-		return err
-	}
-
-	if err := execIgnoreDuplicateColumn(db, `ALTER TABLE messages ADD COLUMN seen_at DATETIME;`); err != nil {
-		return err
-	}
-	// Fast lookup for unread messages for a given recipient.
-	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_messages_to_seen ON messages(to_user_id, seen, sent_at);`); err != nil {
-		return err
-	}
-
+	// 1) Create base tables/indexes first
 	for _, stmt := range stmts {
 		if _, err := db.Exec(stmt); err != nil {
 			return err
 		}
 	}
 
-	// Optional: seed a default set of categories (idempotent).
+	// 2) Add delivery/seen columns (idempotent)
+	if err := execIgnoreDuplicateColumn(db, `ALTER TABLE messages ADD COLUMN delivered INTEGER NOT NULL DEFAULT 0;`); err != nil {
+		return err
+	}
+	if err := execIgnoreDuplicateColumn(db, `ALTER TABLE messages ADD COLUMN delivered_at DATETIME;`); err != nil {
+		return err
+	}
+	if err := execIgnoreDuplicateColumn(db, `ALTER TABLE messages ADD COLUMN seen INTEGER NOT NULL DEFAULT 0;`); err != nil {
+		return err
+	}
+	if err := execIgnoreDuplicateColumn(db, `ALTER TABLE messages ADD COLUMN seen_at DATETIME;`); err != nil {
+		return err
+	}
+
+	// 3) Helpful indices
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_messages_to_delivered ON messages(to_user_id, delivered, sent_at);`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_messages_to_seen ON messages(to_user_id, seen, sent_at);`); err != nil {
+		return err
+	}
+
+	// Optional: seed categories
 	seed := `
 		INSERT OR IGNORE INTO categories (name) VALUES
 			('General'),

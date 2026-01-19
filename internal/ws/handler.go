@@ -29,9 +29,10 @@ func (h *Hub) HandleChat(w http.ResponseWriter, r *http.Request, userID int64) {
 
 	// Create a new client instance associated with this user.
 	client := &Client{
-		hub:    h,
-		conn:   conn,
-		send:   make(chan MessageEvent, 256),
+		hub:  h,
+		conn: conn,
+		send: make(chan any, 256),
+
 		userID: userID,
 	}
 
