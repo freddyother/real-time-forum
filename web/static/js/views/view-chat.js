@@ -251,7 +251,7 @@ export async function renderChatView(root, param) {
 
   function sendSeenNow(otherId) {
     if (!otherId) return
-    sendWS({ type: 'seen', other_user_id: Number(otherId) })
+    sendWS({ type: 'seen', from_user_id: Number(otherId) })
   }
 
   // ---------------------------

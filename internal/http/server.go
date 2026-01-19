@@ -61,6 +61,31 @@ func NewServer(db *sql.DB, hub *ws.Hub) *Server {
 		in.Seen = false
 		return in, nil
 	}
+	// 1) DELIVERED: recipient acks, we persist and notify sender
+	hub.OnDelivered = func(ctx context.Context, receiverID, messageID int64) (int64, string, error) {
+		// Debe:
+		// - validar que receiverID es el to_user_id de ese messageID
+		// - set delivered=1, delivered_at=NOW
+		// - devolver from_user_id (para avisar al sender)
+		fromUserID, deliveredAt, err := s.messages.MarkDelivered(ctx, receiverID, messageID)
+		if err != nil {
+			return 0, "", err
+		}
+		return fromUserID, deliveredAt.UTC().Format(time.RFC3339), nil
+	}
+
+	// 2) SEEN: viewer opens chat, we persist and notify sender with seen_up_to_id
+	hub.OnSeen = func(ctx context.Context, viewerID, otherUserID int64) (int64, int64, int64, string, error) {
+		// Debe:
+		// - marcar seen=1, seen_at=NOW para mensajes: from=otherUserID AND to=viewerID AND seen=0
+		// - devolver seenUpToID (max id marcado)
+		seenUpToID, seenAt, err := s.messages.MarkSeenConversation(ctx, viewerID, otherUserID)
+		if err != nil {
+			return 0, 0, 0, "", err
+		}
+		// fromUserID = otherUserID (sender original), toUserID = viewerID (quien vio)
+		return otherUserID, viewerID, seenUpToID, seenAt.UTC().Format(time.RFC3339), nil
+	}
 
 	return s
 }

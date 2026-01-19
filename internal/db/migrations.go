@@ -11,7 +11,7 @@ func execIgnoreDuplicateColumn(db *sql.DB, stmt string) error {
 		return nil
 	}
 	// SQLite error message example: "duplicate column name: seen"
-	if strings.Contains(strings.ToLower(err.Error()), "duplicate column name") {
+	if strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
 		return nil
 	}
 	return err
