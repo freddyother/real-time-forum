@@ -185,7 +185,9 @@ export async function renderChatView(root, param) {
   let allMessages = []
   let lastSendNonce = 0
 
-  // Normalize message object (API vs WS)
+  // ---------------------------
+  // Message normalization + status
+  // ---------------------------
   function normalizeMessage(m) {
     return {
       id: m.id ?? null,
@@ -193,16 +195,95 @@ export async function renderChatView(root, param) {
       from_user_id: Number(m.from_user_id),
       to_user_id: Number(m.to_user_id),
       content: m.content ?? m.text ?? '',
-      sent_at: m.sent_at || '', // should be ISO
+      sent_at: m.sent_at || '',
+
+      // delivery/read state
+      delivered: Boolean(m.delivered), // backend should send this in API/WS
+      delivered_at: m.delivered_at ?? null,
       seen: Boolean(m.seen),
       seen_at: m.seen_at ?? null,
     }
   }
 
+  function ensureMessageShape(arr) {
+    return arr.map(normalizeMessage)
+  }
+
+  function upsertMessageByIdOrTemp(msg) {
+    const m = normalizeMessage(msg)
+
+    // Reconcile optimistic by temp_id first.
+    if (m.temp_id) {
+      const idx = allMessages.findIndex((x) => x.temp_id && x.temp_id === m.temp_id)
+      if (idx !== -1) {
+        allMessages[idx] = { ...allMessages[idx], ...m }
+        return
+      }
+    }
+
+    // Then by id.
+    if (m.id != null) {
+      const idx = allMessages.findIndex((x) => x.id != null && x.id === m.id)
+      if (idx !== -1) {
+        allMessages[idx] = { ...allMessages[idx], ...m }
+        return
+      }
+    }
+
+    allMessages.push(m)
+  }
+
+  function markDeliveredLocally(messageID) {
+    const idx = allMessages.findIndex((m) => m.id === messageID)
+    if (idx !== -1) {
+      allMessages[idx] = { ...allMessages[idx], delivered: true }
+    }
+  }
+
+  function markSeenUpToLocally(seenUpToID) {
+    if (!seenUpToID) return
+    for (let i = 0; i < allMessages.length; i++) {
+      const m = allMessages[i]
+      if (m.id != null && m.id <= seenUpToID) {
+        // only meaningful for messages I sent (mine) but harmless to set anyway
+        allMessages[i] = { ...m, seen: true }
+      }
+    }
+  }
+
+  // ---------------------------
+  // WS acks helpers
+  // ---------------------------
+  function ackDeliveredIfNeeded(evMsg) {
+    const me = Number(getState().currentUser?.id)
+    if (!me) return
+
+    // If I am the recipient of this message, confirm delivered.
+    if (Number(evMsg.to_user_id) !== me) return
+    if (!evMsg.id) return
+
+    sendWS({
+      type: 'delivered',
+      message_id: Number(evMsg.id),
+    })
+  }
+
+  function sendSeenNow(otherId) {
+    if (!otherId) return
+    // Mark messages from otherId -> me as seen on backend.
+    sendWS({
+      type: 'seen',
+      other_user_id: Number(otherId),
+    })
+  }
+
+  // ---------------------------
+  // Pagination / infinite scroll up
+  // ---------------------------
   async function fetchPage(otherId, pageOffset) {
     const data = await apiGetMessages(otherId, pageOffset, PAGE_SIZE)
     const messages = Array.isArray(data.messages) ? data.messages : []
-    return messages.map(normalizeMessage)
+    return ensureMessageShape(messages)
   }
 
   async function loadInitial(otherId) {
@@ -217,6 +298,9 @@ export async function renderChatView(root, param) {
     hasMore = page.length === PAGE_SIZE
     renderMessages(allMessages, { preserveScroll: false })
     scrollToBottom(msgsEl)
+
+    // When opening the chat, send "seen".
+    sendSeenNow(otherId)
   }
 
   async function loadMoreTop(otherId) {
@@ -259,6 +343,9 @@ export async function renderChatView(root, param) {
     if (msgsEl.scrollTop < 40) loadMoreTop(currentId)
   })
 
+  // ---------------------------
+  // Rendering (grouping + date separators + status)
+  // ---------------------------
   function renderMessages(messages, { preserveScroll }) {
     const state = getState()
     const me = Number(state.currentUser?.id)
@@ -339,9 +426,31 @@ export async function renderChatView(root, param) {
         if (isLastInGroup) bubble.classList.add('is-last')
 
         const isMine = g.side === 'mine'
-        const seen = Boolean(m.seen || m.seen_at)
 
-        const statusHtml = isMine && isLastInGroup ? `<div class="chat-status ${seen ? 'is-seen' : ''}">✓✓</div>` : ''
+        // Status logic:
+        // - optimistic message (no id yet) => 1 check
+        // - delivered => 2 grey checks
+        // - seen => 2 blue checks
+        let statusText = ''
+        let statusClass = ''
+        if (isMine && isLastInGroup) {
+          if (!m.id) {
+            statusText = '✓'
+            statusClass = 'is-sent'
+          } else if (m.seen || m.seen_at) {
+            statusText = '✓✓'
+            statusClass = 'is-seen'
+          } else if (m.delivered || m.delivered_at) {
+            statusText = '✓✓'
+            statusClass = 'is-delivered'
+          } else {
+            // if backend doesn't send delivered yet, still show ✓✓ as "server ack"
+            statusText = '✓✓'
+            statusClass = 'is-sent'
+          }
+        }
+
+        const statusHtml = statusText ? `<div class="chat-status ${statusClass}">${statusText}</div>` : ''
 
         bubble.innerHTML = `
           <div class="chat-text">${escapeHtml(m.content)}</div>
@@ -379,40 +488,69 @@ export async function renderChatView(root, param) {
     return null
   }
 
-  // ---- WS listener: update UI without refetch ----
+  // ---------------------------
+  // WS listener: update UI without refetch
+  // ---------------------------
   const unsubscribe = onWSMessage((ev) => {
-    if (!ev || ev.type !== 'message') return
+    if (!ev || !ev.type) return
 
     const me = Number(getState().currentUser?.id)
     const otherId = Number(getState().chatWithUserId) || null
     if (!me || !otherId) return
 
-    // Only process events belonging to current open chat.
-    const belongs =
-      (Number(ev.from_user_id) === otherId && Number(ev.to_user_id) === me) || (Number(ev.from_user_id) === me && Number(ev.to_user_id) === otherId)
+    // MESSAGE
+    if (ev.type === 'message') {
+      const belongs =
+        (Number(ev.from_user_id) === otherId && Number(ev.to_user_id) === me) || (Number(ev.from_user_id) === me && Number(ev.to_user_id) === otherId)
 
-    if (!belongs) return
+      if (!belongs) return
 
-    const normalized = normalizeMessage(ev)
+      // Insert/update locally
+      upsertMessageByIdOrTemp(ev)
 
-    // Reconcile optimistic message by temp_id (sender side).
-    if (normalized.temp_id) {
-      const idx = allMessages.findIndex((m) => m.temp_id && m.temp_id === normalized.temp_id)
-      if (idx !== -1) {
-        allMessages[idx] = { ...allMessages[idx], ...normalized }
-      } else {
-        allMessages.push(normalized)
+      // If I'm the recipient, send delivered ack.
+      ackDeliveredIfNeeded(ev)
+
+      // If I'm currently viewing this chat and I'm near bottom, mark seen.
+      // (You can remove "near bottom" if you want instant seen always.)
+      if (Number(ev.from_user_id) === otherId && Number(ev.to_user_id) === me) {
+        // only incoming messages
+        if (isNearBottom(msgsEl, 80)) {
+          sendSeenNow(otherId)
+        }
       }
-    } else {
-      // Avoid duplicates by id.
-      if (normalized.id && allMessages.some((m) => m.id === normalized.id)) return
-      allMessages.push(normalized)
+
+      renderMessages(allMessages, { preserveScroll: false })
+      return
     }
 
-    renderMessages(allMessages, { preserveScroll: false })
+    // DELIVERED
+    if (ev.type === 'delivered') {
+      // expected: { type:"delivered", message_id: 123, ... }
+      const mid = Number(ev.message_id || ev.id || 0)
+      if (!mid) return
+
+      // Only meaningful for my outgoing messages
+      markDeliveredLocally(mid)
+      renderMessages(allMessages, { preserveScroll: false })
+      return
+    }
+
+    // SEEN
+    if (ev.type === 'seen') {
+      // expected: { type:"seen", seen_up_to_id: 123, from_user_id, ... }
+      const seenUpTo = Number(ev.seen_up_to_id || ev.seenUpToID || 0)
+      if (!seenUpTo) return
+
+      markSeenUpToLocally(seenUpTo)
+      renderMessages(allMessages, { preserveScroll: false })
+      return
+    }
   })
 
+  // ---------------------------
   // initial open
+  // ---------------------------
   if (selectedUserId) {
     const s = getState()
     const fallbackName = s.chatWithUserName || null
@@ -427,7 +565,9 @@ export async function renderChatView(root, param) {
     await loadInitial(selectedUserId)
   }
 
-  // send message (WS)
+  // ---------------------------
+  // send message (WS) + optimistic insert
+  // ---------------------------
   form.addEventListener('submit', (e) => {
     e.preventDefault()
 
@@ -442,7 +582,7 @@ export async function renderChatView(root, param) {
     const nowIso = new Date().toISOString()
     const tempID = makeTempID()
 
-    // Optimistic insert
+    // Optimistic insert -> shows ✓
     allMessages.push(
       normalizeMessage({
         temp_id: tempID,
@@ -450,13 +590,15 @@ export async function renderChatView(root, param) {
         to_user_id: selectedUserId,
         content,
         sent_at: nowIso,
+        delivered: false,
         seen: false,
       })
     )
+
     lastSendNonce++
     renderMessages(allMessages, { preserveScroll: false })
 
-    // IMPORTANT: include type:"message" so backend accepts it
+    // Send to backend
     sendWS({
       type: 'message',
       to_user_id: Number(selectedUserId),
@@ -465,8 +607,7 @@ export async function renderChatView(root, param) {
     })
   })
 
-  // Optional: when navigating away, stop listening (prevents duplicate handlers).
-  // If your app has an unmount lifecycle, call this there.
+  // Cleanup WS listener on navigation
   window.addEventListener(
     'hashchange',
     () => {

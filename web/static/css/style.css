@@ -630,7 +630,11 @@ NEW POST – CATEGORY CHIPS
   align-items: center;
   text-align: left;
 
-  transition: transform 0.12s ease, background 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
+  transition:
+    transform 0.12s ease,
+    background 0.12s ease,
+    box-shadow 0.12s ease,
+    border-color 0.12s ease;
 }
 
 .chat-user-row:hover {
@@ -1185,10 +1189,22 @@ Group container
   font-size: 11px;
   line-height: 1;
   letter-spacing: -3px;
-  opacity: 0.5;
+  opacity: 0.75;
   pointer-events: none;
 }
 
+/* 1 check (sent only, optimistic) */
+.chat-status.is-sent {
+  opacity: 0.55;
+}
+
+/* 2 checks delivered (grey) */
+.chat-status.is-delivered {
+  opacity: 0.75;
+}
+
+/* 2 checks seen (blue) */
 .chat-status.is-seen {
-  opacity: 0.9;
+  opacity: 1;
+  color: #1e88ff; /* WhatsApp-ish blue */
 }

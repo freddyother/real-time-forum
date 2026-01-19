@@ -20,7 +20,6 @@ func (m *MessageModel) ListBetween(ctx context.Context, userID, otherUserID int6
 		offset = 0
 	}
 
-	// ListBetween returns messages between userID and otherUserID ordered oldest->newest.
 	const q = `
 SELECT id, from_user_id, to_user_id, content, sent_at,
        delivered, delivered_at,
@@ -38,35 +37,42 @@ LIMIT ? OFFSET ?;
 	}
 	defer rows.Close()
 
-	var deliveredInt int
-	var deliveredAt sql.NullTime
-	var seenInt int
-	var seenAt sql.NullTime
-
 	var tmp []Message
+
 	for rows.Next() {
 		var msg Message
+
+		var deliveredInt int
+		var deliveredAt sql.NullTime
+		var seenInt int
+		var seenAt sql.NullTime
+
 		if err := rows.Scan(
-			&msg.ID, &msg.FromUserID, &msg.ToUserID, &msg.Content, &msg.SentAt,
-			&seenInt, &seenAt,
+			&msg.ID,
+			&msg.FromUserID,
+			&msg.ToUserID,
+			&msg.Content,
+			&msg.SentAt,
+			&deliveredInt,
+			&deliveredAt,
+			&seenInt,
+			&seenAt,
 		); err != nil {
 			return nil, err
 		}
+
 		msg.Delivered = deliveredInt == 1
 		if deliveredAt.Valid {
 			t := deliveredAt.Time
 			msg.DeliveredAt = &t
 		}
+
 		msg.Seen = seenInt == 1
 		if seenAt.Valid {
 			t := seenAt.Time
 			msg.SeenAt = &t
 		}
-		msg.Seen = seenInt == 1
-		if seenAt.Valid {
-			t := seenAt.Time
-			msg.SeenAt = &t
-		}
+
 		tmp = append(tmp, msg)
 	}
 
@@ -85,66 +91,50 @@ LIMIT ? OFFSET ?;
 func (m *MessageModel) Create(ctx context.Context, fromUserID, toUserID int64, content string) (*Message, error) {
 	content = strings.TrimSpace(content)
 	if content == "" {
-		return nil, sql.ErrNoRows // simple “signal” error; handler lo convierte a 400
+		return nil, sql.ErrNoRows
 	}
 
 	const q = `
 INSERT INTO messages (from_user_id, to_user_id, content)
 VALUES (?, ?, ?)
-RETURNING id, from_user_id, to_user_id, content, sent_at;
+RETURNING id, from_user_id, to_user_id, content, sent_at,
+          delivered, delivered_at,
+          seen, seen_at;
 `
 
 	var msg Message
+
+	var deliveredInt int
+	var deliveredAt sql.NullTime
+	var seenInt int
+	var seenAt sql.NullTime
+
 	err := m.DB.QueryRowContext(ctx, q, fromUserID, toUserID, content).Scan(
-		&msg.ID, &msg.FromUserID, &msg.ToUserID, &msg.Content, &msg.SentAt,
+		&msg.ID,
+		&msg.FromUserID,
+		&msg.ToUserID,
+		&msg.Content,
+		&msg.SentAt,
+		&deliveredInt,
+		&deliveredAt,
+		&seenInt,
+		&seenAt,
 	)
 	if err != nil {
 		return nil, err
 	}
 
+	msg.Delivered = deliveredInt == 1
+	if deliveredAt.Valid {
+		t := deliveredAt.Time
+		msg.DeliveredAt = &t
+	}
+
+	msg.Seen = seenInt == 1
+	if seenAt.Valid {
+		t := seenAt.Time
+		msg.SeenAt = &t
+	}
+
 	return &msg, nil
-}
-
-// MarkDelivered marks a message as delivered (receiver got it via WS).
-func (m *MessageModel) MarkDelivered(ctx context.Context, messageID, receiverID int64) error {
-	const q = `
-UPDATE messages
-SET delivered = 1,
-    delivered_at = COALESCE(delivered_at, CURRENT_TIMESTAMP)
-WHERE id = ?
-  AND to_user_id = ?
-  AND delivered = 0;
-`
-	_, err := m.DB.ExecContext(ctx, q, messageID, receiverID)
-	return err
-}
-
-// MarkSeenBetween marks as seen all messages sent to viewerID from otherUserID.
-func (m *MessageModel) MarkSeenBetween(ctx context.Context, viewerID, otherUserID int64) (seenUpToID int64, err error) {
-	// 1) Find max message id that should be marked as seen.
-	const qMax = `
-SELECT COALESCE(MAX(id), 0)
-FROM messages
-WHERE from_user_id = ?
-  AND to_user_id = ?;
-`
-	if err := m.DB.QueryRowContext(ctx, qMax, otherUserID, viewerID).Scan(&seenUpToID); err != nil {
-		return 0, err
-	}
-	if seenUpToID == 0 {
-		return 0, nil
-	}
-
-	// 2) Mark seen up to that id (only incoming messages).
-	const qUpd = `
-UPDATE messages
-SET seen = 1,
-    seen_at = COALESCE(seen_at, CURRENT_TIMESTAMP)
-WHERE from_user_id = ?
-  AND to_user_id = ?
-  AND id <= ?
-  AND seen = 0;
-`
-	_, err = m.DB.ExecContext(ctx, qUpd, otherUserID, viewerID, seenUpToID)
-	return seenUpToID, err
 }
