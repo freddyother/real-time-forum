@@ -139,7 +139,6 @@ export async function renderChatSidebar(root) {
 // Main chat page (CENTER) : conversation + compose
 // ------------------------------------------------------------
 export async function renderChatView(root, param) {
-  // Connect WS once (module handles reconnect).
   connectWS()
 
   root.innerHTML = `
@@ -169,24 +168,21 @@ export async function renderChatView(root, param) {
   const input = root.querySelector('#chatInput')
   const sendBtn = form.querySelector('button')
 
-  // param -> selected user
   const paramId = param ? Number(param) : null
   if (paramId) setStateKey('chatWithUserId', paramId)
 
   let selectedUserId = Number(getState().chatWithUserId) || null
 
-  // pagination
   const PAGE_SIZE = 30
   let offset = 0
   let hasMore = true
   let loadingMore = false
 
-  // local cache for current chat
   let allMessages = []
   let lastSendNonce = 0
 
   // ---------------------------
-  // Message normalization + status
+  // Normalize
   // ---------------------------
   function normalizeMessage(m) {
     return {
@@ -197,22 +193,16 @@ export async function renderChatView(root, param) {
       content: m.content ?? m.text ?? '',
       sent_at: m.sent_at || '',
 
-      // delivery/read state
-      delivered: Boolean(m.delivered), // backend should send this in API/WS
+      delivered: Boolean(m.delivered),
       delivered_at: m.delivered_at ?? null,
       seen: Boolean(m.seen),
       seen_at: m.seen_at ?? null,
     }
   }
 
-  function ensureMessageShape(arr) {
-    return arr.map(normalizeMessage)
-  }
-
   function upsertMessageByIdOrTemp(msg) {
     const m = normalizeMessage(msg)
 
-    // Reconcile optimistic by temp_id first.
     if (m.temp_id) {
       const idx = allMessages.findIndex((x) => x.temp_id && x.temp_id === m.temp_id)
       if (idx !== -1) {
@@ -221,7 +211,6 @@ export async function renderChatView(root, param) {
       }
     }
 
-    // Then by id.
     if (m.id != null) {
       const idx = allMessages.findIndex((x) => x.id != null && x.id === m.id)
       if (idx !== -1) {
@@ -235,9 +224,7 @@ export async function renderChatView(root, param) {
 
   function markDeliveredLocally(messageID) {
     const idx = allMessages.findIndex((m) => m.id === messageID)
-    if (idx !== -1) {
-      allMessages[idx] = { ...allMessages[idx], delivered: true }
-    }
+    if (idx !== -1) allMessages[idx] = { ...allMessages[idx], delivered: true }
   }
 
   function markSeenUpToLocally(seenUpToID) {
@@ -245,45 +232,35 @@ export async function renderChatView(root, param) {
     for (let i = 0; i < allMessages.length; i++) {
       const m = allMessages[i]
       if (m.id != null && m.id <= seenUpToID) {
-        // only meaningful for messages I sent (mine) but harmless to set anyway
         allMessages[i] = { ...m, seen: true }
       }
     }
   }
 
   // ---------------------------
-  // WS acks helpers
+  // WS ACK helpers
   // ---------------------------
   function ackDeliveredIfNeeded(evMsg) {
     const me = Number(getState().currentUser?.id)
     if (!me) return
-
-    // If I am the recipient of this message, confirm delivered.
     if (Number(evMsg.to_user_id) !== me) return
     if (!evMsg.id) return
 
-    sendWS({
-      type: 'delivered',
-      message_id: Number(evMsg.id),
-    })
+    sendWS({ type: 'delivered', message_id: Number(evMsg.id) })
   }
 
   function sendSeenNow(otherId) {
     if (!otherId) return
-    // Mark messages from otherId -> me as seen on backend.
-    sendWS({
-      type: 'seen',
-      other_user_id: Number(otherId),
-    })
+    sendWS({ type: 'seen', other_user_id: Number(otherId) })
   }
 
   // ---------------------------
-  // Pagination / infinite scroll up
+  // Pagination
   // ---------------------------
   async function fetchPage(otherId, pageOffset) {
     const data = await apiGetMessages(otherId, pageOffset, PAGE_SIZE)
     const messages = Array.isArray(data.messages) ? data.messages : []
-    return ensureMessageShape(messages)
+    return messages.map(normalizeMessage)
   }
 
   async function loadInitial(otherId) {
@@ -293,13 +270,12 @@ export async function renderChatView(root, param) {
     msgsEl.innerHTML = `<div class="chat-empty">Loading…</div>`
 
     const page = await fetchPage(otherId, offset)
-
     allMessages = page
     hasMore = page.length === PAGE_SIZE
+
     renderMessages(allMessages, { preserveScroll: false })
     scrollToBottom(msgsEl)
 
-    // When opening the chat, send "seen".
     sendSeenNow(otherId)
   }
 
@@ -311,6 +287,7 @@ export async function renderChatView(root, param) {
     const prevScrollTop = msgsEl.scrollTop
 
     offset += PAGE_SIZE
+
     let page = []
     try {
       page = await fetchPage(otherId, offset)
@@ -341,10 +318,13 @@ export async function renderChatView(root, param) {
     const currentId = Number(getState().chatWithUserId) || null
     if (!currentId) return
     if (msgsEl.scrollTop < 40) loadMoreTop(currentId)
+
+    // When user scrolls to bottom, mark seen
+    if (isNearBottom(msgsEl, 50)) sendSeenNow(currentId)
   })
 
   // ---------------------------
-  // Rendering (grouping + date separators + status)
+  // Render
   // ---------------------------
   function renderMessages(messages, { preserveScroll }) {
     const state = getState()
@@ -359,7 +339,6 @@ export async function renderChatView(root, param) {
 
     const TWO_MIN = 2 * 60 * 1000
 
-    // 0) tokens with date separators
     const tokens = []
     let lastDay = null
     for (const raw of messages) {
@@ -372,7 +351,6 @@ export async function renderChatView(root, param) {
       tokens.push({ type: 'msg', m })
     }
 
-    // 1) group by side + (<=2min), separator always cuts groups
     const groups = []
     for (const t of tokens) {
       if (t.type === 'sep') {
@@ -403,7 +381,6 @@ export async function renderChatView(root, param) {
       }
     }
 
-    // 2) render
     for (const g of groups) {
       if (g.kind === 'sep') {
         const sep = document.createElement('div')
@@ -427,26 +404,32 @@ export async function renderChatView(root, param) {
 
         const isMine = g.side === 'mine'
 
-        // Status logic:
-        // - optimistic message (no id yet) => 1 check
-        // - delivered => 2 grey checks
-        // - seen => 2 blue checks
+        // ✅ Correct status flow:
+        // pending (no id yet): ✓ (or a clock)
+        // sent (has id): ✓
+        // delivered: ✓✓ grey
+        // seen: ✓✓ blue
         let statusText = ''
         let statusClass = ''
+
         if (isMine && isLastInGroup) {
-          if (!m.id) {
+          const pending = !m.id
+          const sent = !!m.id
+          const delivered = Boolean(m.delivered || m.delivered_at)
+          const seen = Boolean(m.seen || m.seen_at)
+
+          if (pending) {
+            statusText = '✓'
+            statusClass = 'is-pending'
+          } else if (sent && !delivered && !seen) {
             statusText = '✓'
             statusClass = 'is-sent'
-          } else if (m.seen || m.seen_at) {
-            statusText = '✓✓'
-            statusClass = 'is-seen'
-          } else if (m.delivered || m.delivered_at) {
+          } else if (delivered && !seen) {
             statusText = '✓✓'
             statusClass = 'is-delivered'
-          } else {
-            // if backend doesn't send delivered yet, still show ✓✓ as "server ack"
+          } else if (seen) {
             statusText = '✓✓'
-            statusClass = 'is-sent'
+            statusClass = 'is-seen'
           }
         }
 
@@ -489,7 +472,7 @@ export async function renderChatView(root, param) {
   }
 
   // ---------------------------
-  // WS listener: update UI without refetch
+  // WS listener
   // ---------------------------
   const unsubscribe = onWSMessage((ev) => {
     if (!ev || !ev.type) return
@@ -498,50 +481,33 @@ export async function renderChatView(root, param) {
     const otherId = Number(getState().chatWithUserId) || null
     if (!me || !otherId) return
 
-    // MESSAGE
     if (ev.type === 'message') {
       const belongs =
         (Number(ev.from_user_id) === otherId && Number(ev.to_user_id) === me) || (Number(ev.from_user_id) === me && Number(ev.to_user_id) === otherId)
-
       if (!belongs) return
 
-      // Insert/update locally
       upsertMessageByIdOrTemp(ev)
-
-      // If I'm the recipient, send delivered ack.
       ackDeliveredIfNeeded(ev)
 
-      // If I'm currently viewing this chat and I'm near bottom, mark seen.
-      // (You can remove "near bottom" if you want instant seen always.)
       if (Number(ev.from_user_id) === otherId && Number(ev.to_user_id) === me) {
-        // only incoming messages
-        if (isNearBottom(msgsEl, 80)) {
-          sendSeenNow(otherId)
-        }
+        if (isNearBottom(msgsEl, 80)) sendSeenNow(otherId)
       }
 
       renderMessages(allMessages, { preserveScroll: false })
       return
     }
 
-    // DELIVERED
     if (ev.type === 'delivered') {
-      // expected: { type:"delivered", message_id: 123, ... }
-      const mid = Number(ev.message_id || ev.id || 0)
+      const mid = Number(ev.message_id || 0)
       if (!mid) return
-
-      // Only meaningful for my outgoing messages
       markDeliveredLocally(mid)
       renderMessages(allMessages, { preserveScroll: false })
       return
     }
 
-    // SEEN
     if (ev.type === 'seen') {
-      // expected: { type:"seen", seen_up_to_id: 123, from_user_id, ... }
-      const seenUpTo = Number(ev.seen_up_to_id || ev.seenUpToID || 0)
+      const seenUpTo = Number(ev.seen_up_to_id || 0)
       if (!seenUpTo) return
-
       markSeenUpToLocally(seenUpTo)
       renderMessages(allMessages, { preserveScroll: false })
       return
@@ -566,7 +532,7 @@ export async function renderChatView(root, param) {
   }
 
   // ---------------------------
-  // send message (WS) + optimistic insert
+  // send message (WS)
   // ---------------------------
   form.addEventListener('submit', (e) => {
     e.preventDefault()
@@ -582,7 +548,7 @@ export async function renderChatView(root, param) {
     const nowIso = new Date().toISOString()
     const tempID = makeTempID()
 
-    // Optimistic insert -> shows ✓
+    // optimistic insert => ✓ pending
     allMessages.push(
       normalizeMessage({
         temp_id: tempID,
@@ -598,7 +564,6 @@ export async function renderChatView(root, param) {
     lastSendNonce++
     renderMessages(allMessages, { preserveScroll: false })
 
-    // Send to backend
     sendWS({
       type: 'message',
       to_user_id: Number(selectedUserId),
@@ -607,7 +572,6 @@ export async function renderChatView(root, param) {
     })
   })
 
-  // Cleanup WS listener on navigation
   window.addEventListener(
     'hashchange',
     () => {
