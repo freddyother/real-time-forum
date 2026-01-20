@@ -18,6 +18,19 @@ type MessageEvent struct {
 	TempID     string `json:"temp_id,omitempty"` // optimistic UI reconciliation
 }
 
+// Presence Event
+type PresenceEvent struct {
+	Type       string `json:"type"` // "presence"
+	UserID     int64  `json:"user_id"`
+	Online     bool   `json:"online"`
+	LastSeenAt string `json:"last_seen_at,omitempty"` // RFC3339  offline
+}
+
+type PresenceSnapshotEvent struct {
+	Type   string  `json:"type"` // "presence_snapshot"
+	Online []int64 `json:"online"`
+}
+
 // DeliveredEvent means "the recipient received it" (WS reached recipient).
 type DeliveredEvent struct {
 	Type        string `json:"type"` // "delivered"
@@ -55,6 +68,11 @@ type Hub struct {
 	// Optional: callbacks for receipts (you will wire these in server.NewServer later).
 	OnDelivered func(ctx context.Context, receiverID, messageID int64) (fromUserID int64, deliveredAtRFC3339 string, err error)
 	OnSeen      func(ctx context.Context, viewerID, otherUserID int64) (fromUserID int64, toUserID int64, seenUpToID int64, seenAtRFC3339 string, err error)
+
+	//Presence : OnlineCount , OnOffline
+	onlineCount map[int64]int
+
+	OnOffline func(ctx context.Context, userID int64) (lastSeenRFC3339 string, err error)
 }
 
 // NewHub creates a new Hub with initialized channels and storage.
@@ -64,6 +82,7 @@ func NewHub() *Hub {
 		register:      make(chan *Client),
 		unregister:    make(chan *Client),
 		broadcast:     make(chan MessageEvent, 256),
+		onlineCount:   make(map[int64]int),
 	}
 }
 
@@ -78,7 +97,31 @@ func (h *Hub) Run() {
 				h.clientsByUser[c.userID] = make(map[*Client]bool)
 			}
 			h.clientsByUser[c.userID][c] = true
+
+			// Presence Online, OnOffline
+			h.onlineCount[c.userID]++
+			becameOnline := h.onlineCount[c.userID] == 1
+
+			// snapshot: current list online  (IDs  count>0)
+			onlineIDs := make([]int64, 0, len(h.onlineCount))
+			for uid, n := range h.onlineCount {
+				if n > 0 {
+					onlineIDs = append(onlineIDs, uid)
+				}
+			}
+
 			h.mu.Unlock()
+			// 1) send snapshot ONLY Online client
+			c.send <- PresenceSnapshotEvent{Type: "presence_snapshot", Online: onlineIDs}
+
+			// 2) became online, send to all (except: )
+			if becameOnline {
+				h.broadcastToAll(PresenceEvent{
+					Type:   "presence",
+					UserID: c.userID,
+					Online: true,
+				})
+			}
 
 		case c := <-h.unregister:
 			// Remove a disconnected client and close its channel.
@@ -89,8 +132,27 @@ func (h *Hub) Run() {
 					delete(h.clientsByUser, c.userID)
 				}
 			}
+			if h.onlineCount[c.userID] > 0 {
+				h.onlineCount[c.userID]--
+			}
+			becameOffline := h.onlineCount[c.userID] == 0
 			h.mu.Unlock()
 
+			if becameOffline {
+				lastSeen := ""
+				if h.OnOffline != nil {
+					if ts, err := h.OnOffline(context.Background(), c.userID); err == nil {
+						lastSeen = ts
+					}
+				}
+
+				h.broadcastToAll(PresenceEvent{
+					Type:       "presence",
+					UserID:     c.userID,
+					Online:     false,
+					LastSeenAt: lastSeen,
+				})
+			}
 			// Close send channel AFTER removing from maps (safe for writePump range).
 			close(c.send)
 
@@ -105,6 +167,7 @@ func (h *Hub) Run() {
 }
 
 // sendToUser sends any WS event to all connected tabs for a given user.
+// internal/ws/hub.go (solo cambio en sendToUser)
 func (h *Hub) sendToUser(userID int64, payload any) {
 	h.mu.RLock()
 	set := h.clientsByUser[userID]
@@ -117,14 +180,24 @@ func (h *Hub) sendToUser(userID int64, payload any) {
 		select {
 		case c.send <- payload:
 		default:
-			// If the client cannot receive, assume it's dead.
-			h.mu.Lock()
-			delete(set, c)
-			if len(set) == 0 {
-				delete(h.clientsByUser, userID)
+			// Mark as dead: unregister will remove + close safely in one place
+			h.unregister <- c
+		}
+	}
+}
+
+// notify all clients
+func (h *Hub) broadcastToAll(payload any) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	for userID := range h.clientsByUser {
+		// send each online client
+		for c := range h.clientsByUser[userID] {
+			select {
+			case c.send <- payload:
+			default:
+				// if it gets blocked, we ignore it here (your sendToUser already cleans up better; optional)
 			}
-			h.mu.Unlock()
-			close(c.send)
 		}
 	}
 }

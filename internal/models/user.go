@@ -1,3 +1,4 @@
+// internal/models/user.go
 package models
 
 import (
@@ -34,8 +35,9 @@ type User struct {
 
 // UserLite is a lightweight user representation (chat, sidebar, lists)
 type UserLite struct {
-	ID       int64  `json:"id"`
-	Nickname string `json:"nickname"`
+	ID         int64      `json:"id"`
+	Nickname   string     `json:"nickname"`
+	LastSeenAt *time.Time `json:"last_seen_at,omitempty"`
 }
 
 // UserModel provides database operations for user management.
@@ -157,11 +159,11 @@ func (m *UserModel) ListOthers(ctx context.Context, currentUserID int64, limit i
 	}
 
 	query := `
-	SELECT id, nickname
-	FROM users
-	WHERE id != ?
-	ORDER BY nickname ASC
-	LIMIT ?`
+  SELECT id, nickname, last_seen_at
+  FROM users
+  WHERE id != ?
+  ORDER BY nickname ASC
+  LIMIT ?`
 
 	rows, err := m.DB.QueryContext(ctx, query, currentUserID, limit)
 	if err != nil {
@@ -172,11 +174,22 @@ func (m *UserModel) ListOthers(ctx context.Context, currentUserID int64, limit i
 	var users []UserLite
 	for rows.Next() {
 		var u UserLite
-		if err := rows.Scan(&u.ID, &u.Nickname); err != nil {
+		var lastSeen sql.NullTime
+		if err := rows.Scan(&u.ID, &u.Nickname, &lastSeen); err != nil {
 			return nil, err
+		}
+		if lastSeen.Valid {
+			t := lastSeen.Time
+			u.LastSeenAt = &t
 		}
 		users = append(users, u)
 	}
 
 	return users, nil
+}
+
+// Update function last seen
+func (m *UserModel) UpdateLastSeen(ctx context.Context, userID int64, t time.Time) error {
+	_, err := m.DB.ExecContext(ctx, `UPDATE users SET last_seen_at = ? WHERE id = ?`, t.UTC(), userID)
+	return err
 }

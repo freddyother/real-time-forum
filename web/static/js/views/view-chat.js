@@ -3,7 +3,7 @@
 
 import { apiGetUsers, apiGetMessages } from '../api.js'
 import { connectWS, sendWS, onWSMessage } from '../ws-chat.js'
-import { getState, setStateKey } from '../state.js'
+import { getState, setStateKey, setPresenceSnapshot, setUserPresence, getUserPresence } from '../state.js'
 import { navigateTo } from '../router.js'
 
 // ------------------------------------------------------------
@@ -19,6 +19,23 @@ function formatHHMM(iso) {
   const hh = String(d.getHours()).padStart(2, '0')
   const mm = String(d.getMinutes()).padStart(2, '0')
   return `${hh}:${mm}`
+}
+
+function formatLastSeen(iso) {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+
+  // Today? show HH:MM, else dd/mm HH:MM
+  const now = new Date()
+  const sameDay = d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate()
+
+  if (sameDay) return `last seen ${formatHHMM(iso)}`
+
+  const dd = String(d.getDate()).padStart(2, '0')
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const yyyy = d.getFullYear()
+  return `last seen ${dd}/${mm}/${yyyy} ${formatHHMM(iso)}`
 }
 
 function isNearBottom(el, threshold = 30) {
@@ -108,6 +125,14 @@ export async function renderChatSidebar(root) {
 
   const selectedId = Number(getState().chatWithUserId) || null
 
+  // Helper to render presence hint
+  function presenceHint(uid) {
+    const p = getUserPresence(uid)
+    if (p.online) return `<span class="chat-presence online">● online</span>`
+    if (p.lastSeenAt) return `<span class="chat-presence lastseen">${escapeHtml(formatLastSeen(p.lastSeenAt))}</span>`
+    return `<span class="chat-presence offline">● offline</span>`
+  }
+
   list.innerHTML = ''
   users.forEach((u) => {
     const uid = Number(u.id)
@@ -121,7 +146,7 @@ export async function renderChatSidebar(root) {
       <div class="chat-user-avatar">${u.nickname ? u.nickname[0].toUpperCase() : '?'}</div>
       <div class="chat-user-info">
         <div class="chat-user-name">${escapeHtml(u.nickname || 'Unknown')}</div>
-        <div class="chat-user-hint">Click to open</div>
+        <div class="chat-user-hint">${presenceHint(uid)}</div>
       </div>
     `
 
@@ -154,6 +179,7 @@ export async function renderChatView(root, param) {
         </div>
 
         <form class="chat-compose" id="chatForm">
+          <input id="chatzchatInput" style="display:none" />
           <input id="chatInput" type="text" placeholder="Write a message..." disabled />
           <button class="nav-btn" type="submit" disabled>Send</button>
         </form>
@@ -180,6 +206,40 @@ export async function renderChatView(root, param) {
 
   let allMessages = []
   let lastSendNonce = 0
+
+  // typing state (UI)
+  let typingFromOther = false
+  let typingHideTimer = null
+
+  function setTypingUI(on) {
+    typingFromOther = Boolean(on)
+    renderHeaderSubtitle()
+  }
+
+  function renderHeaderSubtitle() {
+    const otherId = Number(getState().chatWithUserId) || null
+    if (!otherId) {
+      subtitleEl.textContent = 'Select a user to start chatting'
+      return
+    }
+
+    if (typingFromOther) {
+      subtitleEl.textContent = 'typing…'
+      return
+    }
+
+    const p = getUserPresence(otherId)
+    if (p.online) {
+      subtitleEl.textContent = 'online'
+      return
+    }
+    if (p.lastSeenAt) {
+      subtitleEl.textContent = formatLastSeen(p.lastSeenAt)
+      return
+    }
+
+    subtitleEl.textContent = 'Chatting…'
+  }
 
   // ---------------------------
   // Normalize
@@ -252,7 +312,7 @@ export async function renderChatView(root, param) {
   // ---------------------------
   // Seen: debounce/cooldown + visible + active chat guard
   // ---------------------------
-  const SEEN_COOLDOWN_MS = 1000 // 500 o 1000 (recomendado 1000)
+  const SEEN_COOLDOWN_MS = 1000
   let lastSeenSentAt = 0
   let seenTimer = null
   let pendingSeenOtherId = null
@@ -315,12 +375,78 @@ export async function renderChatView(root, param) {
   function onVisibilityChange() {
     const otherId = Number(getState().chatWithUserId) || null
     if (!otherId) return
+
     if (document.visibilityState === 'visible') {
       scheduleSeen(otherId, 'tab-visible')
     }
   }
 
   document.addEventListener('visibilitychange', onVisibilityChange)
+
+  // ---------------------------
+  // Typing (frontend -> WS) with throttle + auto-stop
+  // ---------------------------
+  const TYPING_THROTTLE_MS = 500
+  const TYPING_IDLE_STOP_MS = 1200
+  let lastTypingSentAt = 0
+  let typingStopTimer = null
+  let typingIsOn = false
+
+  function stopTypingNow() {
+    const otherId = Number(getState().chatWithUserId) || null
+    if (!otherId) return
+    if (!typingIsOn) return
+
+    typingIsOn = false
+    sendWS({ type: 'typing', to_user_id: Number(otherId), is_typing: false })
+  }
+
+  function scheduleStopTyping() {
+    if (typingStopTimer) clearTimeout(typingStopTimer)
+    typingStopTimer = setTimeout(() => {
+      typingStopTimer = null
+      stopTypingNow()
+    }, TYPING_IDLE_STOP_MS)
+  }
+
+  function sendTypingOnThrottled() {
+    const otherId = Number(getState().chatWithUserId) || null
+    if (!otherId) return
+
+    // Only when visible + active chat (same philosophy as seen)
+    if (document.visibilityState !== 'visible') return
+    if (!isChatActive(otherId)) return
+
+    const now = Date.now()
+    if (now - lastTypingSentAt < TYPING_THROTTLE_MS) {
+      scheduleStopTyping()
+      return
+    }
+
+    lastTypingSentAt = now
+    if (!typingIsOn) typingIsOn = true
+
+    sendWS({ type: 'typing', to_user_id: Number(otherId), is_typing: true })
+    scheduleStopTyping()
+  }
+
+  input.addEventListener('input', () => {
+    const v = input.value.trim()
+    if (!v) {
+      // If input cleared, stop immediately
+      if (typingStopTimer) clearTimeout(typingStopTimer)
+      typingStopTimer = null
+      stopTypingNow()
+      return
+    }
+    sendTypingOnThrottled()
+  })
+
+  input.addEventListener('blur', () => {
+    if (typingStopTimer) clearTimeout(typingStopTimer)
+    typingStopTimer = null
+    stopTypingNow()
+  })
 
   // ---------------------------
   // Pagination
@@ -382,7 +508,6 @@ export async function renderChatView(root, param) {
     loadingMore = false
   }
 
-  // Scroll handler: load older + schedule seen when user reaches bottom
   msgsEl.addEventListener('scroll', () => {
     const currentId = Number(getState().chatWithUserId) || null
     if (!currentId) return
@@ -475,11 +600,6 @@ export async function renderChatView(root, param) {
 
         const isMine = g.side === 'mine'
 
-        // Status flow:
-        // pending (no id yet): ✓
-        // sent (has id): ✓
-        // delivered: ✓✓ grey
-        // seen: ✓✓ blue
         let statusText = ''
         let statusClass = ''
 
@@ -531,15 +651,9 @@ export async function renderChatView(root, param) {
     }
   }
 
-  async function resolveSelectedUserNickname(userId) {
-    const sidebar = document.getElementById('sidebar-chat')
-    if (!sidebar) return null
-    const btn = sidebar.querySelector(`.chat-user-row.is-active`)
-    if (btn) {
-      const nameEl = btn.querySelector('.chat-user-name')
-      if (nameEl) return nameEl.textContent
-    }
-    return null
+  async function resolveSelectedUserNickname(_userId) {
+    // your sidebar is a separate render; fallback to state
+    return getState().chatWithUserName || null
   }
 
   // ---------------------------
@@ -550,8 +664,59 @@ export async function renderChatView(root, param) {
 
     const me = Number(getState().currentUser?.id)
     const otherId = Number(getState().chatWithUserId) || null
-    if (!me || !otherId) return
+    if (!me) return
 
+    // ------------------ presence snapshot ------------------
+    if (ev.type === 'presence_snapshot') {
+      // expected: { type:"presence_snapshot", online:[1,2,3] }
+      if (Array.isArray(ev.online)) setPresenceSnapshot(ev.online)
+      renderHeaderSubtitle()
+      return
+    }
+
+    // ------------------ presence update ------------------
+    if (ev.type === 'presence') {
+      // expected: { type:"presence", user_id: 2, online:true/false, last_seen_at:"..." }
+      const uid = Number(ev.user_id || 0)
+      if (uid) {
+        setUserPresence(uid, Boolean(ev.online), ev.last_seen_at ?? null)
+        renderHeaderSubtitle()
+      }
+      return
+    }
+
+    // ------------------ typing ------------------
+    if (ev.type === 'typing') {
+      // expected: { type:"typing", from_user_id, to_user_id, is_typing }
+      const from = Number(ev.from_user_id || 0)
+      const to = Number(ev.to_user_id || 0)
+      if (!from || !to) return
+      if (to !== me) return
+
+      // only show typing for the currently opened chat
+      if (!otherId || from !== otherId) return
+
+      const on = Boolean(ev.is_typing)
+      setTypingUI(on)
+
+      // auto-hide typing after 2s even if "stop" packet is lost
+      if (typingHideTimer) clearTimeout(typingHideTimer)
+      if (on) {
+        typingHideTimer = setTimeout(() => {
+          typingHideTimer = null
+          setTypingUI(false)
+        }, 2000)
+      } else {
+        typingHideTimer = null
+      }
+
+      return
+    }
+
+    // From here: chat must be selected
+    if (!otherId) return
+
+    // ------------------ message ------------------
     if (ev.type === 'message') {
       const belongs =
         (Number(ev.from_user_id) === otherId && Number(ev.to_user_id) === me) || (Number(ev.from_user_id) === me && Number(ev.to_user_id) === otherId)
@@ -560,7 +725,6 @@ export async function renderChatView(root, param) {
       upsertMessageByIdOrTemp(ev)
       ackDeliveredIfNeeded(ev)
 
-      // If incoming and we're in active/visible chat, schedule seen (debounced).
       if (Number(ev.from_user_id) === otherId && Number(ev.to_user_id) === me) {
         scheduleSeen(otherId, 'incoming-message')
       }
@@ -569,6 +733,7 @@ export async function renderChatView(root, param) {
       return
     }
 
+    // ------------------ delivered ------------------
     if (ev.type === 'delivered') {
       const mid = Number(ev.message_id || 0)
       if (!mid) return
@@ -577,6 +742,7 @@ export async function renderChatView(root, param) {
       return
     }
 
+    // ------------------ seen ------------------
     if (ev.type === 'seen') {
       const seenUpTo = Number(ev.seen_up_to_id || 0)
       if (!seenUpTo) return
@@ -595,7 +761,8 @@ export async function renderChatView(root, param) {
     const nickname = (await resolveSelectedUserNickname(selectedUserId)) || fallbackName
 
     titleEl.textContent = nickname || 'Chat'
-    subtitleEl.textContent = `Chatting…`
+    renderHeaderSubtitle()
+
     input.disabled = false
     sendBtn.disabled = false
     input.focus()
@@ -616,11 +783,15 @@ export async function renderChatView(root, param) {
     if (!content) return
     input.value = ''
 
+    // stop typing when you send
+    if (typingStopTimer) clearTimeout(typingStopTimer)
+    typingStopTimer = null
+    stopTypingNow()
+
     const me = Number(getState().currentUser?.id)
     const nowIso = new Date().toISOString()
     const tempID = makeTempID()
 
-    // optimistic insert => ✓ pending
     allMessages.push(
       normalizeMessage({
         temp_id: tempID,
@@ -649,10 +820,19 @@ export async function renderChatView(root, param) {
     'hashchange',
     () => {
       unsubscribe()
+
       document.removeEventListener('visibilitychange', onVisibilityChange)
+
       if (seenTimer) clearTimeout(seenTimer)
       seenTimer = null
       pendingSeenOtherId = null
+
+      if (typingStopTimer) clearTimeout(typingStopTimer)
+      typingStopTimer = null
+      typingIsOn = false
+
+      if (typingHideTimer) clearTimeout(typingHideTimer)
+      typingHideTimer = null
     },
     { once: true }
   )

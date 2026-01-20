@@ -1,3 +1,4 @@
+// internal/ws/handler.go
 package ws
 
 import (

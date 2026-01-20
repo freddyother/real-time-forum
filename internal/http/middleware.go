@@ -1,3 +1,4 @@
+// internal/http/middleware.go
 package httpserver
 
 import (

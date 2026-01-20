@@ -1208,3 +1208,17 @@ Group container
   opacity: 1;
   color: #1e88ff; /* WhatsApp-ish blue */
 }
+/*Presence Online, OnOffline*/
+.chat-presence {
+  font-size: 12px;
+  opacity: 0.75;
+}
+.chat-presence.online {
+  opacity: 1;
+}
+.chat-presence.offline {
+  opacity: 0.6;
+}
+.chat-presence.lastseen {
+  opacity: 0.7;
+}

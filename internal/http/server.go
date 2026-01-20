@@ -86,6 +86,14 @@ func NewServer(db *sql.DB, hub *ws.Hub) *Server {
 		// fromUserID = otherUserID (sender original), toUserID = viewerID (quien vio)
 		return otherUserID, viewerID, seenUpToID, seenAt.UTC().Format(time.RFC3339), nil
 	}
+	// offline-Online
+	hub.OnOffline = func(ctx context.Context, userID int64) (string, error) {
+		now := time.Now().UTC()
+		if err := s.users.UpdateLastSeen(ctx, userID, now); err != nil {
+			return "", err
+		}
+		return now.Format(time.RFC3339), nil
+	}
 
 	return s
 }
