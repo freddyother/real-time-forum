@@ -2,7 +2,7 @@
 // Chat view + right sidebar (users list)
 
 import { apiGetUsers, apiGetMessages } from '../api.js'
-import { connectWS, sendWS, onWSMessage } from '../ws-chat.js'
+import { enableWS, sendWS, onWSMessage } from '../ws-chat.js'
 import { getState, setStateKey, setPresenceSnapshot, setUserPresence, getUserPresence } from '../state.js'
 import { navigateTo } from '../router.js'
 
@@ -164,7 +164,7 @@ export async function renderChatSidebar(root) {
 // Main chat page (CENTER) : conversation + compose
 // ------------------------------------------------------------
 export async function renderChatView(root, param) {
-  connectWS()
+  enableWS()
 
   root.innerHTML = `
     <div class="chat-page">

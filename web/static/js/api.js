@@ -1,6 +1,10 @@
+// web/static/js/api.js
+import { setStateKey } from './state.js'
+import { disableWS } from './ws-chat.js'
+
 const BASE_URL = '/api'
 
-// Helper for JSON-based API requests with basic logging.
+// Helper for JSON-based API requests with basic logging + 401-safe.
 async function request(path, options = {}) {
   const method = options.method || 'GET'
 
@@ -8,21 +12,33 @@ async function request(path, options = {}) {
     credentials: 'include', // include cookies for sessions
     headers: {
       'Content-Type': 'application/json',
+      ...(options.headers || {}),
     },
     ...options,
   })
 
+  // ✅ 401: session expired / logged out -> clean logout (NO spam, NO JSON parse)
+  if (res.status === 401) {
+    console.warn(`[API] ${method} ${BASE_URL + path} -> 401 (unauthorised)`)
+    try {
+      disableWS()
+    } catch (_) {}
+    // this will trigger your router redirect to login
+    try {
+      setStateKey('currentUser', null)
+    } catch (_) {}
+    return null
+  }
+
   // Read raw body once (it may be empty).
-  const text = await res.text()
+  const text = await res.text().catch(() => '')
 
   // Log every response for debugging purposes.
   console.log(`[API] ${method} ${BASE_URL + path} -> ${res.status}`, text || '(empty body)')
 
   // No content (e.g. 204).
   if (res.status === 204) {
-    if (!res.ok) {
-      throw new Error('Request failed with status ' + res.status)
-    }
+    if (!res.ok) throw new Error('Request failed with status ' + res.status)
     return null
   }
 
@@ -70,19 +86,16 @@ export function apiLogout() {
 // Fetch list of posts and always return an array.
 export async function apiGetPosts() {
   const data = await request('/posts')
-  const posts = Array.isArray(data.posts) ? data.posts : []
-
+  const posts = Array.isArray(data?.posts) ? data.posts : []
   console.log('[API] apiGetPosts -> posts length:', posts.length)
   return posts
 }
 
 //---------Get Post by Id---------------------------------------
 export async function apiGetPost(id) {
-  const res = await fetch(`/api/posts/${id}`)
-  if (!res.ok) {
-    throw new Error(`apiGetPost failed: ${res.status}`)
-  }
-  return res.json() // { post, comments }
+  const data = await request(`/posts/${id}`)
+  // data is { post, comments } or null if 401
+  return data || { post: null, comments: [] }
 }
 
 //---------Create Post---------------------------------------
@@ -92,63 +105,55 @@ export async function apiCreatePost(data) {
     body: JSON.stringify(data),
   })
 
+  // if 401 -> null
+  if (!res) return null
+
   console.log('[API] apiCreatePost -> created post id:', res.post?.id)
   return res.post
 }
+
 //---------Get comments---------------------------------------
 export async function apiGetComments(id) {
-  const res = await fetch(`/api/posts/${id}/comments`)
-  if (!res.ok) {
-    throw new Error(`apiGetComments failed: ${res.status}`)
-  }
-  return res.json() // { comments }
+  const data = await request(`/posts/${id}/comments`)
+  // data is { comments } or null if 401
+  return data || { comments: [] }
 }
 
 //---------Add comment to a Post ---------------------------------------
 export async function apiAddComment(postId, content) {
-  const res = await fetch(`/api/posts/${postId}/comments`, {
+  const data = await request(`/posts/${postId}/comments`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
     body: JSON.stringify({ content }),
   })
-
-  if (!res.ok) {
-    throw new Error(`apiAddComment failed: ${res.status}`)
-  }
-
-  return res.json() // { comment }
+  // data is { comment } or null if 401
+  return data
 }
 
+// (si ya no lo usas, puedes borrarlo; lo dejo tal cual)
 export function apiGetChatHistory(userId, offset, limit = 10) {
   return request(`/chat/${userId}?offset=${offset}&limit=${limit}`)
 }
 
 // GET /api/messages/{otherUserId}?offset=0&limit=20
 export async function apiGetMessages(otherUserId, offset = 0, limit = 20) {
-  const res = await fetch(`/api/messages/${otherUserId}?offset=${offset}&limit=${limit}`, {
-    credentials: 'include',
-  })
-  if (!res.ok) throw new Error(`apiGetMessages failed: ${res.status}`)
-  return res.json() // { messages: [...] }
+  const data = await request(`/messages/${otherUserId}?offset=${offset}&limit=${limit}`)
+  // data is { messages: [...] } or null if 401
+  return data || { messages: [] }
 }
 
 // POST /api/messages/{otherUserId} { content: "..." }
 export async function apiSendMessage(otherUserId, content) {
-  const res = await fetch(`/api/messages/${otherUserId}`, {
+  const data = await request(`/messages/${otherUserId}`, {
     method: 'POST',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ content }),
   })
-  if (!res.ok) throw new Error(`apiSendMessage failed: ${res.status}`)
-  return res.json() // { message: {...} }
+  // data is { message: {...} } or null if 401
+  return data
 }
 
 // Returns the user array.
-
 export async function apiGetUsers(limit = 50) {
   const data = await request(`/users?limit=${limit}`)
-  return Array.isArray(data.users) ? data.users : []
+  // 401 -> null => []
+  return Array.isArray(data?.users) ? data.users : []
 }

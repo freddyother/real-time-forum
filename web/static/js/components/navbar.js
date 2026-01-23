@@ -5,6 +5,7 @@
 import { navigateTo } from '../router.js'
 import { getState, setStateKey } from '../state.js'
 import { apiLogout } from '../api.js'
+import { closeWS } from '../ws-chat.js'
 
 export function renderNavbar(root) {
   const state = getState()
@@ -26,54 +27,62 @@ export function renderNavbar(root) {
       <button class="nav-btn" data-route="feed">Feed</button>
       <button class="nav-btn" data-route="new-post">New post</button>
       <button class="nav-btn" data-route="chat">Chat</button>
-
-      
     </div>
 
     <div class="nav-right">
-    <div class="nav-avatar">${avatarLetter}</div>
+      <div class="nav-avatar">${avatarLetter}</div>
       <span class="nav-user">Hello, ${user.nickname}</span>
       <button class="nav-btn" id="logoutBtn">Logout</button>
     </div>
   `
 
-  // Helper: highlights the active nav button based on the current hash
+  // ------------------------------------------------------------
+  // Active route highlight
+  // ------------------------------------------------------------
   function setActiveFromHash() {
     const hash = window.location.hash.slice(1) || 'feed'
-    const baseRoute = hash.split('/')[0] // e.g. "post/1" -> "post"
+    const baseRoute = hash.split('/')[0]
 
     nav.querySelectorAll('.nav-btn[data-route]').forEach((btn) => {
       const btnRoute = btn.getAttribute('data-route')
-      const isActive = btnRoute === baseRoute
-      btn.classList.toggle('active', isActive)
+      btn.classList.toggle('active', btnRoute === baseRoute)
     })
   }
 
-  // --- Navigation buttons ---
   nav.querySelectorAll('.nav-btn[data-route]').forEach((btn) => {
     btn.addEventListener('click', () => {
-      const route = btn.getAttribute('data-route')
-      navigateTo(route)
-      // We can update immediately; the hashchange event will also fire.
+      navigateTo(btn.getAttribute('data-route'))
       setActiveFromHash()
     })
   })
 
-  // --- Logout button ---
+  // ------------------------------------------------------------
+  // ✅ LOGOUT
+  // ------------------------------------------------------------
   const logoutBtn = nav.querySelector('#logoutBtn')
   logoutBtn.addEventListener('click', async () => {
     try {
+      // 1)  CLOSE WS
+      closeWS()
+
+      // 2) Limpia estado relacionado con chat
+      setStateKey('chatWithUserId', null)
+      setStateKey('chatWithUserName', null)
+
+      // 3) Logout HTTP (delete cookie session)
       await apiLogout()
-      setStateKey('currentUser', null) // triggers router redirect
+
+      // 4) clean up → router go to the login
+      setStateKey('currentUser', null)
+
+      // (optional)
+      navigateTo('login')
     } catch (err) {
       console.error('Logout failed:', err)
     }
   })
 
-  // Listen to hash changes to keep the active state in sync
   window.addEventListener('hashchange', setActiveFromHash)
-
-  // Initial active button when the navbar is first rendered
   setActiveFromHash()
 
   root.appendChild(nav)

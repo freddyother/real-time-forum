@@ -4,16 +4,19 @@ let socket = null
 let reconnectTimer = null
 let reconnectAttempt = 0
 
-// Outbox queue (messages to send when the socket is open again).
 const outbox = []
-
-// Subscribers for incoming WS messages.
 const msgListeners = new Set()
-
-// Subscribers for connection status changes.
 const statusListeners = new Set()
 
 let isOpen = false
+
+// ✅ gate
+let shouldReconnect = false
+
+// ✅ detect rejected loops (401 / handshake fails quickly)
+let connectStartedAt = 0 // when we call new WebSocket()
+let lastOpenAt = 0 // when onopen fires
+let consecutiveFastCloses = 0
 
 export function onWSMessage(cb) {
   msgListeners.add(cb)
@@ -22,7 +25,6 @@ export function onWSMessage(cb) {
 
 export function onWSStatus(cb) {
   statusListeners.add(cb)
-  // Immediately emit current status
   cb({ isOpen, attempt: reconnectAttempt })
   return () => statusListeners.delete(cb)
 }
@@ -41,21 +43,45 @@ function buildWSUrl() {
   return `${proto}//${location.host}/ws/chat`
 }
 
+/**
+ * ✅ Call this after login success (or when you want WS running globally).
+ */
+export function enableWS() {
+  shouldReconnect = true
+  connectWS()
+}
+
+/**
+ * ✅ Call this on logout.
+ */
+export function disableWS() {
+  shouldReconnect = false
+  closeWS({ clearOutbox: true })
+}
+
 export function connectWS() {
-  // Avoid duplicate connections.
+  if (!shouldReconnect) return
+
+  // Avoid duplicate connections
   if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) return
 
-  // Clear any pending reconnect timer; we are trying now.
   if (reconnectTimer) {
     clearTimeout(reconnectTimer)
     reconnectTimer = null
   }
+
+  connectStartedAt = Date.now()
+  lastOpenAt = 0
 
   socket = new WebSocket(buildWSUrl())
 
   socket.onopen = () => {
     isOpen = true
     reconnectAttempt = 0
+
+    lastOpenAt = Date.now()
+    consecutiveFastCloses = 0
+
     console.log('[WS] connected')
     emitStatus()
     flushOutbox()
@@ -65,32 +91,53 @@ export function connectWS() {
     try {
       const data = JSON.parse(e.data)
       emitMessage(data)
-    } catch (err) {
+    } catch {
       console.warn('[WS] invalid JSON', e.data)
     }
   }
 
   socket.onclose = () => {
     isOpen = false
-    console.log('[WS] closed')
     emitStatus()
-    scheduleReconnect()
+
+    const now = Date.now()
+
+    // If onopen never happened, measure from connectStartedAt.
+    const base = lastOpenAt || connectStartedAt
+    const aliveMs = base ? now - base : 0
+
+    // "fast close" = connection died very quickly (handshake rejected / unauth / server down)
+    if (aliveMs > 0 && aliveMs < 700) {
+      consecutiveFastCloses += 1
+    } else {
+      // don’t reset too aggressively; decay instead
+      consecutiveFastCloses = Math.max(0, consecutiveFastCloses - 1)
+    }
+
+    // ✅ Stop reconnect if we are in a fast-close loop
+    if (consecutiveFastCloses >= 3) {
+      console.warn('[WS] fast-close loop detected, disabling reconnect (likely 401/unauth/server down)')
+      shouldReconnect = false
+      return
+    }
+
+    if (shouldReconnect) scheduleReconnect()
   }
 
   socket.onerror = () => {
-    // onclose will handle reconnection.
+    // onclose will handle
   }
 }
 
 function scheduleReconnect() {
+  if (!shouldReconnect) return
   if (reconnectTimer) return
 
   reconnectAttempt += 1
 
-  // Exponential backoff with jitter (helps avoid thundering herd).
-  const base = 300 * Math.pow(2, reconnectAttempt) // 300ms, 600ms, 1200ms...
+  const base = 300 * Math.pow(2, reconnectAttempt) // 300, 600, 1200...
   const capped = Math.min(8000, base)
-  const jitter = Math.floor(Math.random() * 250) // 0..250ms
+  const jitter = Math.floor(Math.random() * 250)
   const delay = capped + jitter
 
   reconnectTimer = setTimeout(() => {
@@ -103,13 +150,11 @@ function flushOutbox() {
   if (!socket || socket.readyState !== WebSocket.OPEN) return
   if (!outbox.length) return
 
-  // Send in FIFO order
   while (outbox.length) {
     const payload = outbox.shift()
     try {
       socket.send(JSON.stringify(payload))
-    } catch (err) {
-      // If send fails, put the payload back and reconnect.
+    } catch {
       outbox.unshift(payload)
       try {
         socket.close()
@@ -119,14 +164,10 @@ function flushOutbox() {
   }
 }
 
-/**
- * Send a payload over the websocket.
- * If not connected, the payload is queued and sent after reconnection.
- *
- * @returns {boolean} true if sent immediately, false if queued
- */
 export function sendWS(payload) {
-  // Ensure connection exists (best effort).
+  // ✅ If disabled (logged out), don't queue.
+  if (!shouldReconnect) return false
+
   connectWS()
 
   if (!socket || socket.readyState !== WebSocket.OPEN) {
@@ -137,7 +178,7 @@ export function sendWS(payload) {
   try {
     socket.send(JSON.stringify(payload))
     return true
-  } catch (err) {
+  } catch {
     outbox.push(payload)
     try {
       socket.close()
@@ -146,20 +187,27 @@ export function sendWS(payload) {
   }
 }
 
-// Optional helper to force close (useful when logging out).
-export function closeWS() {
+export function closeWS({ clearOutbox = false } = {}) {
   if (reconnectTimer) {
     clearTimeout(reconnectTimer)
     reconnectTimer = null
   }
+
   reconnectAttempt = 0
   isOpen = false
   emitStatus()
 
   if (socket) {
     try {
+      socket.onclose = null
+      socket.onerror = null
+      socket.onmessage = null
+      socket.onopen = null
       socket.close()
     } catch (_) {}
   }
+
   socket = null
+
+  if (clearOutbox) outbox.length = 0
 }

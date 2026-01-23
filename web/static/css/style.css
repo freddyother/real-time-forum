@@ -22,6 +22,7 @@
   --sidebar-width: 260px;
 
   --nav-h: 64px;
+  --green: #00a300;
 }
 
 /* Global reset */
@@ -1215,6 +1216,7 @@ Group container
 }
 .chat-presence.online {
   opacity: 1;
+  color: var(--green);
 }
 .chat-presence.offline {
   opacity: 0.6;

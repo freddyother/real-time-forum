@@ -1,6 +1,7 @@
+// web/static/js/main.js
 import { initRouter, navigateTo } from './router.js'
 import { initState, getState, onStateChange, subscribe } from './state.js'
-import { connectWS, disconnectWS } from './websocket.js'
+import { connectWS, closeWS } from './ws-chat.js'
 import { renderNavbar } from './components/navbar.js'
 import { renderChatSidebar } from './views/view-chat.js'
 
@@ -38,12 +39,13 @@ function bootstrap() {
   onStateChange('currentUser', (user) => {
     if (user) {
       // User just logged in
-      connectWS(user)
+      connectWS()
+
       mountNavbar()
       navigateTo('feed') // go to feed when user logs in
     } else {
       // User logged out
-      disconnectWS()
+      closeWS()
       unmountNavbar()
       navigateTo('login') // go to login when user logs out
     }
@@ -55,7 +57,7 @@ function bootstrap() {
   // Initial route based on existing user (e.g. restored from storage)
   const state = getState()
   if (state.currentUser) {
-    connectWS(state.currentUser)
+    connectWS()
     mountNavbar()
     navigateTo('feed')
   } else {
