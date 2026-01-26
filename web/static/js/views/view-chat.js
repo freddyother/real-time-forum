@@ -83,16 +83,39 @@ function makeTempID() {
   return `tmp_${Date.now()}_${Math.random().toString(16).slice(2)}`
 }
 
+// Keep one controller for the sidebar requests.
+// Any new render aborts the previous in-flight request.
+let sidebarAbortCtrl = null
+
+function abortSidebarFetch() {
+  if (sidebarAbortCtrl) {
+    try {
+      sidebarAbortCtrl.abort()
+    } catch (_) {}
+    sidebarAbortCtrl = null
+  }
+}
+
 // ------------------------------------------------------------
 // Sidebar (RIGHT) : users list
 // ------------------------------------------------------------
 export async function renderChatSidebar(root) {
   const state = getState()
 
+  // If not logged in, clear and abort any in-flight request.
   if (!state.currentUser) {
+    abortSidebarFetch()
     root.innerHTML = ''
     return
   }
+
+  // Abort previous request before starting a new one.
+  abortSidebarFetch()
+  sidebarAbortCtrl = new AbortController()
+  const { signal } = sidebarAbortCtrl
+
+  // Snapshot the current user id to detect changes mid-flight.
+  const meIdAtStart = Number(state.currentUser?.id) || 0
 
   root.innerHTML = `
     <div class="chat-side-header">
@@ -108,22 +131,34 @@ export async function renderChatSidebar(root) {
 
   let users = []
   try {
-    users = await apiGetUsers(100)
+    // apiGetUsers must accept (limit, signal)
+    users = await apiGetUsers(100, signal)
   } catch (err) {
+    // If aborted, do nothing (expected during logout/rerender).
+    if (err && err.name === 'AbortError') return
+
     console.error('Failed to load users:', err)
     list.innerHTML = `<div class="chat-side-empty">Could not load users.</div>`
     return
   }
 
-  const meId = Number(state.currentUser?.id)
-  users = users.filter((u) => Number(u.id) !== meId)
+  // If the request is not the latest one anymore, ignore.
+  if (!sidebarAbortCtrl || sidebarAbortCtrl.signal !== signal) return
+
+  // If the user logged out / switched account while the request was running, do nothing.
+  const stateNow = getState()
+  const meIdNow = Number(stateNow.currentUser?.id) || 0
+  if (!stateNow.currentUser || meIdNow !== meIdAtStart) return
+
+  users = Array.isArray(users) ? users : []
+  users = users.filter((u) => Number(u.id) !== meIdNow)
 
   if (!users.length) {
     list.innerHTML = `<div class="chat-side-empty">No other users yet.</div>`
     return
   }
 
-  const selectedId = Number(getState().chatWithUserId) || null
+  const selectedId = Number(stateNow.chatWithUserId) || null
 
   // Helper to render presence hint
   function presenceHint(uid, fallbackLastSeenAt) {
@@ -154,6 +189,9 @@ export async function renderChatSidebar(root) {
     `
 
     item.addEventListener('click', () => {
+      // If the user logs out between render and click, ignore.
+      if (!getState().currentUser) return
+
       setStateKey('chatWithUserId', uid)
       setStateKey('chatWithUserName', u.nickname || 'Unknown')
       navigateTo(`chat/${uid}`)

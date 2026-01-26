@@ -1,5 +1,7 @@
 // web/static/js/state.js
 
+const LS_KEY = 'rtf_state_v1'
+
 const state = {
   currentUser: null,
   posts: [],
@@ -9,12 +11,15 @@ const state = {
   chatWithUserId: null,
   chatWithUserName: null,
 
-  chatList: [], // [{ userId, username, lastMessageDate, lastMessageSnippet, online }, ...]
-  messagesByUser: {}, // { userId: [ ... ] }
+  chatList: [],
+  messagesByUser: {},
 
-  // presence (WS)
-  // { [userId]: { online: boolean, lastSeenAt: string|null } }
   presenceByUser: {},
+}
+
+// In-memory persisted store (loaded from localStorage once)
+let persisted = {
+  lastChatByUser: {}, // { [myUserId]: { chatWithUserId, chatWithUserName } }
 }
 
 // Keyed listeners: { [key]: Set<fn> }
@@ -24,7 +29,52 @@ const keyedListeners = Object.create(null)
 const globalListeners = new Set()
 
 export function initState() {
-  // optional: hydrate from localStorage
+  // Hydrate from localStorage (best-effort)
+  try {
+    const raw = localStorage.getItem(LS_KEY)
+    if (!raw) return
+    const saved = JSON.parse(raw)
+
+    if (saved && typeof saved === 'object') {
+      if (saved.lastChatByUser && typeof saved.lastChatByUser === 'object') {
+        persisted.lastChatByUser = saved.lastChatByUser
+      }
+    }
+  } catch (e) {
+    console.warn('[state] failed to hydrate localStorage', e)
+  }
+}
+
+function persist() {
+  // Persist only minimal UI state
+  try {
+    localStorage.setItem(LS_KEY, JSON.stringify(persisted))
+  } catch {
+    // Ignore quota/private mode errors
+  }
+}
+
+function restoreLastChatForCurrentUser() {
+  const me = state.currentUser?.id
+  if (!me) return
+
+  const saved = persisted.lastChatByUser[String(me)]
+  if (!saved) return
+
+  state.chatWithUserId = saved.chatWithUserId ?? null
+  state.chatWithUserName = saved.chatWithUserName ?? null
+}
+
+function saveLastChatForCurrentUser() {
+  const me = state.currentUser?.id
+  if (!me) return
+
+  persisted.lastChatByUser[String(me)] = {
+    chatWithUserId: state.chatWithUserId ?? null,
+    chatWithUserName: state.chatWithUserName ?? null,
+  }
+
+  persist()
 }
 
 export function getState() {
@@ -33,6 +83,16 @@ export function getState() {
 
 export function setStateKey(key, value) {
   state[key] = value
+
+  // ✅ When user logs in, restore last chat for THAT user
+  if (key === 'currentUser' && value) {
+    restoreLastChatForCurrentUser()
+  }
+
+  // ✅ Persist last chat only when these change (and only if we have a currentUser)
+  if (key === 'chatWithUserId' || key === 'chatWithUserName') {
+    saveLastChatForCurrentUser()
+  }
 
   const set = keyedListeners[key]
   if (set) {
@@ -94,26 +154,11 @@ function notify() {
 // Presence helpers
 // ---------------------------
 
-/**
- * Apply a full snapshot of currently online user IDs.
- * - IDs in snapshot -> online: true
- * - Known users not in snapshot -> online: false
- * Keeps lastSeenAt as-is (server will push presence offline event with last_seen_at when available).
- */
 export function setPresenceSnapshot(onlineIds = []) {
-  const onlineSet = new Set((onlineIds || []).map((x) => Number(x)))
-
   const next = { ...state.presenceByUser }
 
-  // Mark everyone we already know accordingly
-  for (const key of Object.keys(next)) {
-    const uid = Number(key)
-    const prev = next[uid] || { online: false, lastSeenAt: null }
-    next[uid] = { ...prev, online: onlineSet.has(uid) }
-  }
-
-  // Ensure snapshot users exist in map even if we didn't know them yet
-  for (const uid of onlineSet) {
+  for (const id of onlineIds) {
+    const uid = Number(id)
     const prev = next[uid] || { online: false, lastSeenAt: null }
     next[uid] = { ...prev, online: true }
   }
@@ -130,7 +175,6 @@ export function setUserPresence(userId, online, lastSeenAt = null) {
     ...state.presenceByUser,
     [uid]: {
       online: Boolean(online),
-      // Keep existing lastSeenAt if new one is null/undefined
       lastSeenAt: lastSeenAt ?? prev.lastSeenAt ?? null,
     },
   }

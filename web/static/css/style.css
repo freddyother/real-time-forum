@@ -1,3 +1,5 @@
+/*  web/static/css/style.css*/
+
 /* -----------------------------------------
    GLOBAL THEME – Glass Lavender Bubbles
 ------------------------------------------ */
@@ -33,6 +35,7 @@
 }
 
 body {
+  padding-top: var(--nav-h);
   font-family: system-ui, sans-serif;
   background: var(--bg-light);
   color: var(--text-dark);
@@ -73,17 +76,26 @@ body::after {
 /* -----------------------------------------
    NAVBAR
 ------------------------------------------ */
+/* NAVBAR: always visible (fixed) */
 .navbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+
   width: 100%;
+  min-height: var(--nav-h);
   padding: 12px 28px;
-  min-height: 64px;
+
   background: rgba(255, 255, 255, 0.55);
   backdrop-filter: blur(14px);
   border-bottom: 1px solid var(--card-border);
+
   display: flex;
   justify-content: center;
   align-items: center;
-  position: relative;
+
   box-sizing: border-box;
 }
 

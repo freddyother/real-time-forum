@@ -1,44 +1,77 @@
 // web/static/js/api.js
-import { setStateKey } from './state.js'
+
+import { getState, setStateKey } from './state.js'
 import { disableWS } from './ws-chat.js'
 
 const BASE_URL = '/api'
 
-// Helper for JSON-based API requests with basic logging + 401-safe.
+// Avoid handling the same "session expired" event multiple times.
+let handledUnauthOnce = false
+
+function handleUnauthorisedOnce(method, path) {
+  const state = getState()
+  const wasLoggedIn = Boolean(state.currentUser)
+
+  // If we are already logged out, do nothing (401 can happen while leaving the app).
+  if (!wasLoggedIn) return
+
+  // If we already handled the unauthorised state once, do not spam state changes.
+  if (handledUnauthOnce) return
+  handledUnauthOnce = true
+
+  console.warn(`[API] ${method} ${BASE_URL + path} -> 401 (unauthorised). Clearing session locally...`)
+
+  try {
+    disableWS()
+  } catch (_) {}
+
+  // Trigger logout flow (main.js reacts to currentUser change).
+  try {
+    setStateKey('currentUser', null)
+  } catch (_) {}
+}
+
+// Helper for JSON-based API requests with basic logging.
 async function request(path, options = {}) {
   const method = options.method || 'GET'
 
-  const res = await fetch(BASE_URL + path, {
-    credentials: 'include', // include cookies for sessions
-    headers: {
-      'Content-Type': 'application/json',
-      ...(options.headers || {}),
-    },
-    ...options,
-  })
+  let res
+  try {
+    res = await fetch(BASE_URL + path, {
+      credentials: 'include', // include cookies for sessions
+      headers: {
+        'Content-Type': 'application/json',
+        ...(options.headers || {}),
+      },
+      signal: options.signal, // ✅ correct place (NOT inside headers)
+      ...options,
+    })
+  } catch (err) {
+    // ✅ AbortController: ignore silently (expected during logout / rerenders)
+    if (err && (err.name === 'AbortError' || err.code === 20)) {
+      return null
+    }
+    throw err
+  }
 
-  // ✅ 401: session expired / logged out -> clean logout (NO spam, NO JSON parse)
+  // 401: session expired / logged out
   if (res.status === 401) {
-    console.warn(`[API] ${method} ${BASE_URL + path} -> 401 (unauthorised)`)
-    try {
-      disableWS()
-    } catch (_) {}
-    // this will trigger your router redirect to login
-    try {
-      setStateKey('currentUser', null)
-    } catch (_) {}
+    handleUnauthorisedOnce(method, path)
     return null
   }
 
   // Read raw body once (it may be empty).
   const text = await res.text().catch(() => '')
 
-  // Log every response for debugging purposes.
-  console.log(`[API] ${method} ${BASE_URL + path} -> ${res.status}`, text || '(empty body)')
+  console.log(`[API] ${method} ${BASE_URL + path} -> ${res.status}`, text ? '(body)' : '(empty body)')
 
   // No content (e.g. 204).
   if (res.status === 204) {
-    if (!res.ok) throw new Error('Request failed with status ' + res.status)
+    if (!res.ok) {
+      const err = new Error('Request failed with status ' + res.status)
+      err.status = res.status
+      throw err
+    }
     return null
   }
 
@@ -48,18 +81,20 @@ async function request(path, options = {}) {
     try {
       data = JSON.parse(text)
     } catch {
-      // If JSON parsing fails and status is not ok, treat as error.
       if (!res.ok) {
-        throw new Error('Request failed (invalid JSON response)')
+        const err = new Error('Request failed (invalid JSON response)')
+        err.status = res.status
+        throw err
       }
-      // For successful non-JSON responses, return raw text.
       return text
     }
   }
 
   if (!res.ok) {
     const message = (data && data.error) || 'Request failed'
-    throw new Error(message)
+    const err = new Error(message)
+    err.status = res.status
+    throw err
   }
 
   return data
@@ -72,11 +107,18 @@ export function apiRegister(data) {
   })
 }
 
-export function apiLogin(identifier, password) {
-  return request('/login', {
+export async function apiLogin(identifier, password) {
+  // On successful login, allow future 401 handling again.
+  const res = await request('/login', {
     method: 'POST',
     body: JSON.stringify({ identifier, password }),
   })
+
+  if (res && res.user) {
+    handledUnauthOnce = false
+  }
+
+  return res
 }
 
 export function apiLogout() {
@@ -91,53 +133,43 @@ export async function apiGetPosts() {
   return posts
 }
 
-//---------Get Post by Id---------------------------------------
 export async function apiGetPost(id) {
   const data = await request(`/posts/${id}`)
-  // data is { post, comments } or null if 401
   return data || { post: null, comments: [] }
 }
 
-//---------Create Post---------------------------------------
 export async function apiCreatePost(data) {
   const res = await request('/posts', {
     method: 'POST',
     body: JSON.stringify(data),
   })
 
-  // if 401 -> null
   if (!res) return null
 
   console.log('[API] apiCreatePost -> created post id:', res.post?.id)
   return res.post
 }
 
-//---------Get comments---------------------------------------
 export async function apiGetComments(id) {
   const data = await request(`/posts/${id}/comments`)
-  // data is { comments } or null if 401
   return data || { comments: [] }
 }
 
-//---------Add comment to a Post ---------------------------------------
 export async function apiAddComment(postId, content) {
   const data = await request(`/posts/${postId}/comments`, {
     method: 'POST',
     body: JSON.stringify({ content }),
   })
-  // data is { comment } or null if 401
   return data
 }
 
-// (si ya no lo usas, puedes borrarlo; lo dejo tal cual)
 export function apiGetChatHistory(userId, offset, limit = 10) {
   return request(`/chat/${userId}?offset=${offset}&limit=${limit}`)
 }
 
 // GET /api/messages/{otherUserId}?offset=0&limit=20
-export async function apiGetMessages(otherUserId, offset = 0, limit = 20) {
-  const data = await request(`/messages/${otherUserId}?offset=${offset}&limit=${limit}`)
-  // data is { messages: [...] } or null if 401
+export async function apiGetMessages(otherUserId, offset = 0, limit = 20, signal = null) {
+  const data = await request(`/messages/${otherUserId}?offset=${offset}&limit=${limit}`, { signal })
   return data || { messages: [] }
 }
 
@@ -147,13 +179,11 @@ export async function apiSendMessage(otherUserId, content) {
     method: 'POST',
     body: JSON.stringify({ content }),
   })
-  // data is { message: {...} } or null if 401
   return data
 }
 
 // Returns the user array.
-export async function apiGetUsers(limit = 50) {
-  const data = await request(`/users?limit=${limit}`)
-  // 401 -> null => []
+export async function apiGetUsers(limit = 50, signal = null) {
+  const data = await request(`/users?limit=${limit}`, { signal })
   return Array.isArray(data?.users) ? data.users : []
 }

@@ -1,3 +1,5 @@
+// web/static/js/views/view-auth.js
+
 import { apiLogin, apiRegister } from '../api.js'
 import { setStateKey } from '../state.js'
 import { navigateTo } from '../router.js'
@@ -104,7 +106,7 @@ function renderRegister(container) {
     </form>
 
     <p class="auth-switch">
-        Already registered? <a href="#/login">Log in</a>
+        Already registered? <a href="#login">Log in</a>
     </p>
 `
 

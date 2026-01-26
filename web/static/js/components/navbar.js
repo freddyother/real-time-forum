@@ -1,11 +1,10 @@
+// web/static/js/components/navbar.js
 // Renders the main navigation bar.
-// This component appears on every page except when the user is not logged in.
-// The router decides when it is displayed.
+// This component appears on every page when the user is logged in.
 
 import { navigateTo } from '../router.js'
 import { getState, setStateKey } from '../state.js'
 import { apiLogout } from '../api.js'
-import { closeWS } from '../ws-chat.js'
 
 export function renderNavbar(root) {
   const state = getState()
@@ -49,40 +48,52 @@ export function renderNavbar(root) {
     })
   }
 
+  // ------------------------------------------------------------
+  // Navigation buttons
+  // ------------------------------------------------------------
   nav.querySelectorAll('.nav-btn[data-route]').forEach((btn) => {
     btn.addEventListener('click', () => {
-      navigateTo(btn.getAttribute('data-route'))
+      const route = btn.getAttribute('data-route')
+
+      // ✅ If the user clicks "Chat", try to open the last active conversation.
+      if (route === 'chat') {
+        const s = getState()
+        const lastId = Number(s.chatWithUserId) || null
+        if (lastId) {
+          navigateTo(`chat/${lastId}`)
+        } else {
+          navigateTo('chat')
+        }
+        setActiveFromHash()
+        return
+      }
+
+      navigateTo(route)
       setActiveFromHash()
     })
   })
 
   // ------------------------------------------------------------
-  // ✅ LOGOUT
+  // LOGOUT
   // ------------------------------------------------------------
   const logoutBtn = nav.querySelector('#logoutBtn')
   logoutBtn.addEventListener('click', async () => {
     try {
-      // 1)  CLOSE WS
-      closeWS()
-
-      // 2) Limpia estado relacionado con chat
+      // Clear chat selection
       setStateKey('chatWithUserId', null)
       setStateKey('chatWithUserName', null)
 
-      // 3) Logout HTTP (delete cookie session)
-      await apiLogout()
-
-      // 4) clean up → router go to the login
+      // Trigger app logout (main.js will disable WS + navigate)
       setStateKey('currentUser', null)
 
-      // (optional)
-      navigateTo('login')
+      // Logout HTTP (delete cookie session)
+      await apiLogout()
     } catch (err) {
       console.error('Logout failed:', err)
     }
   })
 
-  window.addEventListener('hashchange', setActiveFromHash)
+  // ✅ No global "hashchange" listener here (avoid leaks / duplicated handlers).
   setActiveFromHash()
 
   root.appendChild(nav)

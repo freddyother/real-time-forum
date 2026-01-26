@@ -1,10 +1,12 @@
+// web/static/js/router.js
+
 import { renderAuthView } from './views/view-auth.js'
 import { renderFeedView } from './views/view-feed.js'
 import { renderPostView } from './views/view-post.js'
 import { renderChatView, renderChatSidebar } from './views/view-chat.js'
 import { renderNewPostView } from './views/view-new-post.js'
 
-import { getState, setStateKey } from './state.js'
+import { getState } from './state.js'
 
 let currentView = null
 
@@ -27,10 +29,13 @@ function handleRoute() {
   const hash = window.location.hash.slice(1) || 'login'
   const [view, param] = hash.split('/')
 
-  //
-  if (view !== 'chat' && state.chatWithUserId) {
-    setStateKey('chatWithUserId', null)
-    setStateKey('chatWithUserName', null)
+  // ✅ If user opens "#chat" without param, redirect to the last opened conversation (if any).
+  if (view === 'chat' && !param) {
+    const lastId = Number(state.chatWithUserId) || null
+    if (lastId) {
+      navigateTo(`chat/${lastId}`)
+      return
+    }
   }
 
   const app = document.getElementById('app')
@@ -39,12 +44,12 @@ function handleRoute() {
   // ✅ Sidebar root (global)
   const sidebarRoot = document.getElementById('sidebar-chat')
   if (sidebarRoot) {
-    // si no hay login -> vacío
+    // If not logged in -> empty (main.js will hide it anyway)
     if (!user) {
       sidebarRoot.innerHTML = ''
     } else {
-      // si hay login -> lo pintamos SIEMPRE (feed, post, new-post, chat...)
-      renderChatSidebar(sidebarRoot) // no hace falta await
+      // If logged in -> render it always
+      renderChatSidebar(sidebarRoot) // no need await
     }
   }
 
