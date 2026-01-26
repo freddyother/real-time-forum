@@ -1,25 +1,21 @@
 // web/static/js/main.js
 import { initRouter, navigateTo } from './router.js'
-import { initState, getState, onStateChange, subscribe } from './state.js'
-import { connectWS, closeWS } from './ws-chat.js'
+import { initState, getState, onStateChange, subscribe, setPresenceSnapshot, setUserPresence } from './state.js'
+import { enableWS, disableWS, onWSMessage } from './ws-chat.js'
 import { renderNavbar } from './components/navbar.js'
 import { renderChatSidebar } from './views/view-chat.js'
 
-// Helper to mount / remount the navbar when a user is logged in
+let unsubscribeWS = null
 
 function mountNavbar() {
   const navbarRoot = document.getElementById('navbar-root')
   if (!navbarRoot) return
 
-  // Remove any existing navbar (avoid duplicates)
   const existing = navbarRoot.querySelector('.navbar')
   if (existing) existing.remove()
 
-  // Render navbar for the current user
   renderNavbar(navbarRoot)
 }
-
-// Helper to remove navbar when the user logs out
 
 function unmountNavbar() {
   const navbarRoot = document.getElementById('navbar-root')
@@ -29,35 +25,66 @@ function unmountNavbar() {
   if (existing) existing.remove()
 }
 
+function ensureGlobalWSListeners() {
+  if (unsubscribeWS) return
+
+  unsubscribeWS = onWSMessage((ev) => {
+    if (!ev || !ev.type) return
+
+    // ✅ presence snapshot: { type:"presence_snapshot", online:[1,2,3] }
+    if (ev.type === 'presence_snapshot') {
+      if (Array.isArray(ev.online)) setPresenceSnapshot(ev.online)
+      return
+    }
+
+    // ✅ presence update: { type:"presence", user_id, online, last_seen_at }
+    if (ev.type === 'presence') {
+      const uid = Number(ev.user_id || 0)
+      if (!uid) return
+      setUserPresence(uid, Boolean(ev.online), ev.last_seen_at ?? null)
+      return
+    }
+  })
+}
+
+function teardownGlobalWSListeners() {
+  if (unsubscribeWS) {
+    unsubscribeWS()
+    unsubscribeWS = null
+  }
+}
+
 function bootstrap() {
-  // Initialise global state
   initState()
 
+  // every state change, re-render the sidebar/navbar
   subscribe(() => rerenderChrome())
 
-  // React to login / logout changes
   onStateChange('currentUser', (user) => {
     if (user) {
-      // User just logged in
-      connectWS()
+      // ✅ login: WS global + global listeners
+      ensureGlobalWSListeners()
+      enableWS()
 
       mountNavbar()
-      navigateTo('feed') // go to feed when user logs in
+      navigateTo('feed')
     } else {
-      // User logged out
-      closeWS()
+      // ✅ logout: close WS + clear listeners
+      disableWS()
+      teardownGlobalWSListeners()
+
       unmountNavbar()
-      navigateTo('login') // go to login when user logs out
+      navigateTo('login')
     }
   })
 
-  // Start router (hashchange listener + initial route)
   initRouter()
 
-  // Initial route based on existing user (e.g. restored from storage)
+  // restored session
   const state = getState()
   if (state.currentUser) {
-    connectWS()
+    ensureGlobalWSListeners()
+    enableWS()
     mountNavbar()
     navigateTo('feed')
   } else {
@@ -66,9 +93,16 @@ function bootstrap() {
 }
 
 function rerenderChrome() {
-  const navbarRoot = document.getElementById('navbar-root')
-  if (!navbarRoot) renderNavbar(navbarRoot)
+  const state = getState()
 
+  // Navbar: keep it idempotent (avoid duplicates)
+  if (state.currentUser) {
+    mountNavbar() // mountNavbar() already removes the existing one
+  } else {
+    unmountNavbar()
+  }
+
+  // Sidebar
   const sidebar = document.getElementById('sidebar-chat')
   if (sidebar) renderChatSidebar(sidebar)
 }

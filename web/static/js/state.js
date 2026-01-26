@@ -94,13 +94,26 @@ function notify() {
 // Presence helpers
 // ---------------------------
 
+/**
+ * Apply a full snapshot of currently online user IDs.
+ * - IDs in snapshot -> online: true
+ * - Known users not in snapshot -> online: false
+ * Keeps lastSeenAt as-is (server will push presence offline event with last_seen_at when available).
+ */
 export function setPresenceSnapshot(onlineIds = []) {
+  const onlineSet = new Set((onlineIds || []).map((x) => Number(x)))
+
   const next = { ...state.presenceByUser }
 
-  // mark everyone we know as offline first? NO: better only update known ids
-  // We'll mark listed ones online and keep others as-is unless later presence says offline.
-  for (const id of onlineIds) {
-    const uid = Number(id)
+  // Mark everyone we already know accordingly
+  for (const key of Object.keys(next)) {
+    const uid = Number(key)
+    const prev = next[uid] || { online: false, lastSeenAt: null }
+    next[uid] = { ...prev, online: onlineSet.has(uid) }
+  }
+
+  // Ensure snapshot users exist in map even if we didn't know them yet
+  for (const uid of onlineSet) {
     const prev = next[uid] || { online: false, lastSeenAt: null }
     next[uid] = { ...prev, online: true }
   }
@@ -117,6 +130,7 @@ export function setUserPresence(userId, online, lastSeenAt = null) {
     ...state.presenceByUser,
     [uid]: {
       online: Boolean(online),
+      // Keep existing lastSeenAt if new one is null/undefined
       lastSeenAt: lastSeenAt ?? prev.lastSeenAt ?? null,
     },
   }

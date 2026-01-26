@@ -2,8 +2,8 @@
 // Chat view + right sidebar (users list)
 
 import { apiGetUsers, apiGetMessages } from '../api.js'
-import { enableWS, sendWS, onWSMessage } from '../ws-chat.js'
-import { getState, setStateKey, setPresenceSnapshot, setUserPresence, getUserPresence } from '../state.js'
+import { sendWS, onWSMessage } from '../ws-chat.js'
+import { getState, setStateKey, getUserPresence } from '../state.js'
 import { navigateTo } from '../router.js'
 
 // ------------------------------------------------------------
@@ -126,10 +126,13 @@ export async function renderChatSidebar(root) {
   const selectedId = Number(getState().chatWithUserId) || null
 
   // Helper to render presence hint
-  function presenceHint(uid) {
+  function presenceHint(uid, fallbackLastSeenAt) {
     const p = getUserPresence(uid)
     if (p.online) return `<span class="chat-presence online">● online</span>`
-    if (p.lastSeenAt) return `<span class="chat-presence lastseen">${escapeHtml(formatLastSeen(p.lastSeenAt))}</span>`
+
+    const ls = p.lastSeenAt || fallbackLastSeenAt
+    if (ls) return `<span class="chat-presence lastseen">${escapeHtml(formatLastSeen(ls))}</span>`
+
     return `<span class="chat-presence offline">● offline</span>`
   }
 
@@ -146,7 +149,7 @@ export async function renderChatSidebar(root) {
       <div class="chat-user-avatar">${u.nickname ? u.nickname[0].toUpperCase() : '?'}</div>
       <div class="chat-user-info">
         <div class="chat-user-name">${escapeHtml(u.nickname || 'Unknown')}</div>
-        <div class="chat-user-hint">${presenceHint(uid)}</div>
+        <div class="chat-user-hint">${presenceHint(uid, u.last_seen_at)}</div>
       </div>
     `
 
@@ -164,7 +167,12 @@ export async function renderChatSidebar(root) {
 // Main chat page (CENTER) : conversation + compose
 // ------------------------------------------------------------
 export async function renderChatView(root, param) {
-  enableWS()
+  const s = getState()
+  if (!s.currentUser) {
+    root.innerHTML = ''
+    navigateTo('login')
+    return
+  }
 
   root.innerHTML = `
     <div class="chat-page">
@@ -375,10 +383,7 @@ export async function renderChatView(root, param) {
   function onVisibilityChange() {
     const otherId = Number(getState().chatWithUserId) || null
     if (!otherId) return
-
-    if (document.visibilityState === 'visible') {
-      scheduleSeen(otherId, 'tab-visible')
-    }
+    if (document.visibilityState === 'visible') scheduleSeen(otherId, 'tab-visible')
   }
 
   document.addEventListener('visibilitychange', onVisibilityChange)
@@ -513,10 +518,7 @@ export async function renderChatView(root, param) {
     if (!currentId) return
 
     if (msgsEl.scrollTop < 40) loadMoreTop(currentId)
-
-    if (isNearBottom(msgsEl, 80)) {
-      scheduleSeen(currentId, 'scroll-bottom')
-    }
+    if (isNearBottom(msgsEl, 80)) scheduleSeen(currentId, 'scroll-bottom')
   })
 
   // ---------------------------
@@ -570,11 +572,8 @@ export async function renderChatView(root, param) {
       }
 
       const prevItem = prev.items[prev.items.length - 1]
-      if (ts - prevItem.ts > TWO_MIN) {
-        groups.push({ kind: 'group', side, items: [{ m, ts }] })
-      } else {
-        prev.items.push({ m, ts })
-      }
+      if (ts - prevItem.ts > TWO_MIN) groups.push({ kind: 'group', side, items: [{ m, ts }] })
+      else prev.items.push({ m, ts })
     }
 
     for (const g of groups) {
@@ -651,13 +650,8 @@ export async function renderChatView(root, param) {
     }
   }
 
-  async function resolveSelectedUserNickname(_userId) {
-    // your sidebar is a separate render; fallback to state
-    return getState().chatWithUserName || null
-  }
-
   // ---------------------------
-  // WS listener
+  // WS listener (only chat events here)
   // ---------------------------
   const unsubscribe = onWSMessage((ev) => {
     if (!ev || !ev.type) return
@@ -666,40 +660,17 @@ export async function renderChatView(root, param) {
     const otherId = Number(getState().chatWithUserId) || null
     if (!me) return
 
-    // ------------------ presence snapshot ------------------
-    if (ev.type === 'presence_snapshot') {
-      // expected: { type:"presence_snapshot", online:[1,2,3] }
-      if (Array.isArray(ev.online)) setPresenceSnapshot(ev.online)
-      renderHeaderSubtitle()
-      return
-    }
-
-    // ------------------ presence update ------------------
-    if (ev.type === 'presence') {
-      // expected: { type:"presence", user_id: 2, online:true/false, last_seen_at:"..." }
-      const uid = Number(ev.user_id || 0)
-      if (uid) {
-        setUserPresence(uid, Boolean(ev.online), ev.last_seen_at ?? null)
-        renderHeaderSubtitle()
-      }
-      return
-    }
-
-    // ------------------ typing ------------------
+    // typing
     if (ev.type === 'typing') {
-      // expected: { type:"typing", from_user_id, to_user_id, is_typing }
       const from = Number(ev.from_user_id || 0)
       const to = Number(ev.to_user_id || 0)
       if (!from || !to) return
       if (to !== me) return
-
-      // only show typing for the currently opened chat
       if (!otherId || from !== otherId) return
 
       const on = Boolean(ev.is_typing)
       setTypingUI(on)
 
-      // auto-hide typing after 2s even if "stop" packet is lost
       if (typingHideTimer) clearTimeout(typingHideTimer)
       if (on) {
         typingHideTimer = setTimeout(() => {
@@ -709,14 +680,12 @@ export async function renderChatView(root, param) {
       } else {
         typingHideTimer = null
       }
-
       return
     }
 
-    // From here: chat must be selected
     if (!otherId) return
 
-    // ------------------ message ------------------
+    // message
     if (ev.type === 'message') {
       const belongs =
         (Number(ev.from_user_id) === otherId && Number(ev.to_user_id) === me) || (Number(ev.from_user_id) === me && Number(ev.to_user_id) === otherId)
@@ -733,7 +702,7 @@ export async function renderChatView(root, param) {
       return
     }
 
-    // ------------------ delivered ------------------
+    // delivered
     if (ev.type === 'delivered') {
       const mid = Number(ev.message_id || 0)
       if (!mid) return
@@ -742,7 +711,7 @@ export async function renderChatView(root, param) {
       return
     }
 
-    // ------------------ seen ------------------
+    // seen
     if (ev.type === 'seen') {
       const seenUpTo = Number(ev.seen_up_to_id || 0)
       if (!seenUpTo) return
@@ -752,15 +721,10 @@ export async function renderChatView(root, param) {
     }
   })
 
-  // ---------------------------
   // initial open
-  // ---------------------------
   if (selectedUserId) {
-    const s = getState()
-    const fallbackName = s.chatWithUserName || null
-    const nickname = (await resolveSelectedUserNickname(selectedUserId)) || fallbackName
-
-    titleEl.textContent = nickname || 'Chat'
+    const fallbackName = getState().chatWithUserName || null
+    titleEl.textContent = fallbackName || 'Chat'
     renderHeaderSubtitle()
 
     input.disabled = false
@@ -770,9 +734,7 @@ export async function renderChatView(root, param) {
     await loadInitial(selectedUserId)
   }
 
-  // ---------------------------
   // send message (WS)
-  // ---------------------------
   form.addEventListener('submit', (e) => {
     e.preventDefault()
 
@@ -784,9 +746,9 @@ export async function renderChatView(root, param) {
     input.value = ''
 
     // stop typing when you send
-    if (typingStopTimer) clearTimeout(typingStopTimer)
-    typingStopTimer = null
-    stopTypingNow()
+    if (typingHideTimer) clearTimeout(typingHideTimer)
+    typingHideTimer = null
+    typingIsOn = false
 
     const me = Number(getState().currentUser?.id)
     const nowIso = new Date().toISOString()
@@ -820,16 +782,11 @@ export async function renderChatView(root, param) {
     'hashchange',
     () => {
       unsubscribe()
-
       document.removeEventListener('visibilitychange', onVisibilityChange)
 
       if (seenTimer) clearTimeout(seenTimer)
       seenTimer = null
       pendingSeenOtherId = null
-
-      if (typingStopTimer) clearTimeout(typingStopTimer)
-      typingStopTimer = null
-      typingIsOn = false
 
       if (typingHideTimer) clearTimeout(typingHideTimer)
       typingHideTimer = null

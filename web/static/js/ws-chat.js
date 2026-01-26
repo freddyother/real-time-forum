@@ -60,7 +60,14 @@ export function disableWS() {
 }
 
 export function connectWS() {
-  if (!shouldReconnect) return
+  // ✅ CHANGE:
+  // Make connectWS() compatible with old main.js that calls connectWS() directly.
+  // If someone calls connectWS(), we assume "WS should run".
+  shouldReconnect = true
+
+  // ✅ CHANGE:
+  // If we previously disabled due to fast-close loop, give it a new chance on explicit connect.
+  consecutiveFastCloses = 0
 
   // Avoid duplicate connections
   if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) return
@@ -188,6 +195,10 @@ export function sendWS(payload) {
 }
 
 export function closeWS({ clearOutbox = false } = {}) {
+  // ✅ CHANGE:
+  // When closing explicitly (logout), we should stop reconnecting.
+  shouldReconnect = false
+
   if (reconnectTimer) {
     clearTimeout(reconnectTimer)
     reconnectTimer = null
