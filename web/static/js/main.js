@@ -11,6 +11,7 @@ function mountNavbar() {
   const navbarRoot = document.getElementById('navbar-root')
   if (!navbarRoot) return
 
+  // Remove any existing navbar (avoid duplicates)
   const existing = navbarRoot.querySelector('.navbar')
   if (existing) existing.remove()
 
@@ -31,13 +32,13 @@ function ensureGlobalWSListeners() {
   unsubscribeWS = onWSMessage((ev) => {
     if (!ev || !ev.type) return
 
-    // ✅ presence snapshot: { type:"presence_snapshot", online:[1,2,3] }
+    // presence snapshot: { type:"presence_snapshot", online:[1,2,3] }
     if (ev.type === 'presence_snapshot') {
       if (Array.isArray(ev.online)) setPresenceSnapshot(ev.online)
       return
     }
 
-    // ✅ presence update: { type:"presence", user_id, online, last_seen_at }
+    // presence update: { type:"presence", user_id, online, last_seen_at }
     if (ev.type === 'presence') {
       const uid = Number(ev.user_id || 0)
       if (!uid) return
@@ -54,33 +55,62 @@ function teardownGlobalWSListeners() {
   }
 }
 
+function rerenderChrome() {
+  const state = getState()
+
+  // Navbar: keep it idempotent (avoid duplicates)
+  if (state.currentUser) {
+    mountNavbar()
+  } else {
+    unmountNavbar()
+  }
+
+  // Sidebar: hide the container completely when logged out
+  const sidebar = document.getElementById('sidebar-chat')
+  if (!sidebar) return
+
+  if (state.currentUser) {
+    sidebar.style.display = '' // show (use default CSS)
+    renderChatSidebar(sidebar)
+  } else {
+    sidebar.innerHTML = ''
+    sidebar.style.display = 'none' // hide the whole right panel
+  }
+}
+
 function bootstrap() {
   initState()
 
-  // every state change, re-render the sidebar/navbar
+  // Re-render once immediately (important for hard refresh / first paint)
+  rerenderChrome()
+
+  // Every state change, re-render the sidebar/navbar
   subscribe(() => rerenderChrome())
 
   onStateChange('currentUser', (user) => {
     if (user) {
-      // ✅ login: WS global + global listeners
+      // login: WS global + global listeners
       ensureGlobalWSListeners()
       enableWS()
 
       mountNavbar()
       navigateTo('feed')
     } else {
-      // ✅ logout: close WS + clear listeners
+      // logout: close WS + clear listeners
       disableWS()
       teardownGlobalWSListeners()
 
       unmountNavbar()
       navigateTo('login')
+
+      // Ensure UI is cleaned up immediately
+      rerenderChrome()
     }
   })
 
   initRouter()
 
-  // restored session
+  // Restored session
   const state = getState()
   if (state.currentUser) {
     ensureGlobalWSListeners()
@@ -90,21 +120,14 @@ function bootstrap() {
   } else {
     navigateTo('login')
   }
+
+  // Ensure chrome matches the initial route/render
+  rerenderChrome()
 }
 
-function rerenderChrome() {
-  const state = getState()
-
-  // Navbar: keep it idempotent (avoid duplicates)
-  if (state.currentUser) {
-    mountNavbar() // mountNavbar() already removes the existing one
-  } else {
-    unmountNavbar()
-  }
-
-  // Sidebar
-  const sidebar = document.getElementById('sidebar-chat')
-  if (sidebar) renderChatSidebar(sidebar)
+// Run bootstrap when DOM is ready (fixes hard refresh showing the sidebar column)
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', bootstrap)
+} else {
+  bootstrap()
 }
-
-bootstrap()
