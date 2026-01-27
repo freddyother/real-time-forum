@@ -15,6 +15,10 @@ type Post struct {
 	Category  string    `json:"category"`
 	CreatedAt time.Time `json:"created_at"`
 	Author    string    `json:"author"` // resolved from joined users table
+
+	// Reactions (like for now)
+	ReactionsCount int64 `json:"reactions_count"`
+	IReacted       bool  `json:"i_reacted"`
 }
 
 // PostModel provides database operations for posts.
@@ -127,4 +131,117 @@ func (m *PostModel) Create(ctx context.Context, p *Post) error {
 	}
 
 	return nil
+}
+
+// GetWithReactions returns a post by ID, with author + reactions info for viewer.
+func (m *PostModel) GetWithReactions(ctx context.Context, id int64, viewerID int64) (*Post, error) {
+	const query = `
+    SELECT
+      p.id,
+      p.user_id,
+      p.title,
+      p.content,
+      p.category,
+      p.created_at,
+      u.nickname AS author,
+
+      -- total likes
+      (SELECT COUNT(*) FROM post_reactions r
+        WHERE r.post_id = p.id AND r.reaction = 'like'
+      ) AS reactions_count,
+
+      -- did viewer like it?
+      CASE
+        WHEN ? <= 0 THEN 0
+        ELSE EXISTS(
+          SELECT 1 FROM post_reactions r2
+          WHERE r2.post_id = p.id AND r2.user_id = ? AND r2.reaction = 'like'
+        )
+      END AS i_reacted
+    FROM posts p
+    JOIN users u ON u.id = p.user_id
+    WHERE p.id = ?;
+  `
+
+	var p Post
+	var iReactedInt int // SQLite returns 0/1
+
+	err := m.DB.QueryRowContext(ctx, query, viewerID, viewerID, id).Scan(
+		&p.ID,
+		&p.UserID,
+		&p.Title,
+		&p.Content,
+		&p.Category,
+		&p.CreatedAt,
+		&p.Author,
+		&p.ReactionsCount,
+		&iReactedInt,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	p.IReacted = iReactedInt == 1
+	return &p, nil
+}
+
+// ListWithReactions returns posts with author + reactions info for viewer.
+func (m *PostModel) ListWithReactions(ctx context.Context, limit int, viewerID int64) ([]Post, error) {
+	const query = `
+    SELECT
+      p.id,
+      p.user_id,
+      p.title,
+      p.content,
+      p.category,
+      p.created_at,
+      u.nickname AS author,
+
+      (SELECT COUNT(*) FROM post_reactions r
+        WHERE r.post_id = p.id AND r.reaction = 'like'
+      ) AS reactions_count,
+
+      CASE
+        WHEN ? <= 0 THEN 0
+        ELSE EXISTS(
+          SELECT 1 FROM post_reactions r2
+          WHERE r2.post_id = p.id AND r2.user_id = ? AND r2.reaction = 'like'
+        )
+      END AS i_reacted
+    FROM posts p
+    JOIN users u ON u.id = p.user_id
+    ORDER BY p.created_at DESC
+    LIMIT ?;
+  `
+
+	rows, err := m.DB.QueryContext(ctx, query, viewerID, viewerID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	posts := []Post{}
+	for rows.Next() {
+		var p Post
+		var iReactedInt int
+
+		if err := rows.Scan(
+			&p.ID,
+			&p.UserID,
+			&p.Title,
+			&p.Content,
+			&p.Category,
+			&p.CreatedAt,
+			&p.Author,
+			&p.ReactionsCount,
+			&iReactedInt,
+		); err != nil {
+			return nil, err
+		}
+
+		p.IReacted = iReactedInt == 1
+		posts = append(posts, p)
+	}
+
+	return posts, rows.Err()
 }

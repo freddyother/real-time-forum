@@ -63,6 +63,22 @@ func RunMigrations(db *sql.DB) error {
 			FOREIGN KEY (post_id) REFERENCES posts(id),
 			FOREIGN KEY (user_id) REFERENCES users(id)
 		);`,
+		// Reactions
+		`CREATE TABLE IF NOT EXISTS post_reactions (
+  			post_id INTEGER NOT NULL,
+ 			 user_id INTEGER NOT NULL,
+ 			 reaction TEXT NOT NULL DEFAULT 'like',
+			 created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ 			 PRIMARY KEY (post_id, user_id, reaction),
+ 		 	FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
+ 			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+		);`,
+
+		`CREATE INDEX IF NOT EXISTS idx_post_reactions_post
+  			ON post_reactions(post_id);`,
+
+		`CREATE INDEX IF NOT EXISTS idx_post_reactions_user
+  			ON post_reactions(user_id);`,
 
 		// Messages table: stores private messages exchanged between users.
 		// "seen/delivered" columns are added via ALTER TABLE to stay idempotent.

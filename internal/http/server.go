@@ -141,8 +141,11 @@ func writeJSON(w http.ResponseWriter, status int, data any) {
 func (s *Server) handlePosts(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		// List the latest posts (up to 100).
-		posts, err := s.posts.List(r.Context(), 100)
+		// ✅ viewerID optional (0 if no session)
+		viewerID, _ := getUserIDFromContext(r)
+
+		// ✅ List posts with reactions info
+		posts, err := s.posts.ListWithReactions(r.Context(), 100, viewerID)
 		if err != nil {
 			log.Println("[POSTS] Error loading posts:", err)
 			http.Error(w, "cannot load posts", http.StatusInternalServerError)
@@ -228,6 +231,10 @@ func (s *Server) handlePostDetail(w http.ResponseWriter, r *http.Request) {
 		s.handlePostComments(w, r)
 		return
 	}
+	if strings.HasSuffix(r.URL.Path, "/reactions") {
+		s.handlePostReactions(w, r)
+		return
+	}
 	s.handlePostByID(w, r)
 }
 
@@ -256,7 +263,11 @@ func (s *Server) handlePostByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	post, err := s.posts.Get(r.Context(), postID)
+	// ✅ viewerID optional (0 if no session)
+	viewerID, _ := getUserIDFromContext(r)
+
+	// ✅ Get post with reactions info
+	post, err := s.posts.GetWithReactions(r.Context(), postID, viewerID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			http.Error(w, "post not found", http.StatusNotFound)
@@ -278,6 +289,143 @@ func (s *Server) handlePostByID(w http.ResponseWriter, r *http.Request) {
 		"post":     post,
 		"comments": comments,
 	})
+}
+
+// ------------------------------------------------------------
+//                      HandlePostreactions
+// ------------------------------------------------------------
+
+func (s *Server) handlePostReactions(w http.ResponseWriter, r *http.Request) {
+	// /api/posts/{id}/reactions
+	path := strings.TrimPrefix(r.URL.Path, "/api/posts/")
+	path = strings.TrimSuffix(path, "/reactions")
+
+	postID, err := strconv.ParseInt(path, 10, 64)
+	if err != nil || postID <= 0 {
+		http.Error(w, "invalid post id", http.StatusBadRequest)
+		return
+	}
+
+	// optional payload: { "reaction": "like" }
+	reaction := "like"
+	if r.Method == http.MethodPost {
+		var req struct {
+			Reaction string `json:"reaction"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		if strings.TrimSpace(req.Reaction) != "" {
+			reaction = strings.TrimSpace(req.Reaction)
+		}
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		// If logged in we can also return i_reacted
+		userID, _ := getUserIDFromContext(r)
+
+		count, iReacted, err := s.getReactionInfo(r.Context(), postID, userID, reaction)
+		if err != nil {
+			log.Println("[REACTIONS] Get error:", err)
+			http.Error(w, "cannot load reactions", http.StatusInternalServerError)
+			return
+		}
+
+		writeJSON(w, http.StatusOK, map[string]any{
+			"post_id":         postID,
+			"reaction":        reaction,
+			"reactions_count": count,
+			"i_reacted":       iReacted,
+		})
+
+	case http.MethodPost:
+		userID, ok := getUserIDFromContext(r)
+		if !ok {
+			http.Error(w, "unauthorised", http.StatusUnauthorized)
+			return
+		}
+
+		reacted, count, err := s.toggleReaction(r.Context(), postID, userID, reaction)
+		if err != nil {
+			log.Println("[REACTIONS] Toggle error:", err)
+			http.Error(w, "cannot react", http.StatusInternalServerError)
+			return
+		}
+
+		writeJSON(w, http.StatusOK, map[string]any{
+			"post_id":         postID,
+			"reaction":        reaction,
+			"reacted":         reacted,
+			"reactions_count": count,
+		})
+
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func (s *Server) toggleReaction(ctx context.Context, postID, userID int64, reaction string) (bool, int64, error) {
+	// 1) try delete (if existed)
+	delRes, err := s.db.ExecContext(ctx,
+		`DELETE FROM post_reactions WHERE post_id=? AND user_id=? AND reaction=?`,
+		postID, userID, reaction,
+	)
+	if err != nil {
+		return false, 0, err
+	}
+
+	rows, _ := delRes.RowsAffected()
+	reactedNow := false
+
+	// 2) if nothing deleted -> insert
+	if rows == 0 {
+		_, err := s.db.ExecContext(ctx,
+			`INSERT INTO post_reactions(post_id, user_id, reaction) VALUES(?,?,?)`,
+			postID, userID, reaction,
+		)
+		if err != nil {
+			return false, 0, err
+		}
+		reactedNow = true
+	}
+
+	// 3) count
+	var count int64
+	err = s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM post_reactions WHERE post_id=? AND reaction=?`,
+		postID, reaction,
+	).Scan(&count)
+	if err != nil {
+		return reactedNow, 0, err
+	}
+
+	return reactedNow, count, nil
+}
+
+func (s *Server) getReactionInfo(ctx context.Context, postID, userID int64, reaction string) (count int64, iReacted bool, err error) {
+	err = s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM post_reactions WHERE post_id=? AND reaction=?`,
+		postID, reaction,
+	).Scan(&count)
+	if err != nil {
+		return 0, false, err
+	}
+
+	if userID <= 0 {
+		return count, false, nil
+	}
+
+	var exists int
+	err = s.db.QueryRowContext(ctx,
+		`SELECT EXISTS(
+      SELECT 1 FROM post_reactions WHERE post_id=? AND user_id=? AND reaction=?
+    )`,
+		postID, userID, reaction,
+	).Scan(&exists)
+	if err != nil {
+		return count, false, err
+	}
+
+	return count, exists == 1, nil
 }
 
 // handlePostComments handle:

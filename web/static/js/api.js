@@ -187,3 +187,12 @@ export async function apiGetUsers(limit = 50, signal = null) {
   const data = await request(`/users?limit=${limit}`, { signal })
   return Array.isArray(data?.users) ? data.users : []
 }
+// POST /api/posts/{id}/reactions { reaction: "like" }
+export async function apiTogglePostReaction(postId, reaction = 'like') {
+  const data = await request(`/posts/${postId}/reactions`, {
+    method: 'POST',
+    body: JSON.stringify({ reaction }),
+  })
+  // data: { post_id, reaction, reacted, reactions_count }
+  return data
+}
