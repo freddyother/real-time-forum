@@ -3,7 +3,7 @@
 
 import { apiGetUsers, apiGetMessages } from '../api.js'
 import { sendWS, onWSMessage } from '../ws-chat.js'
-import { getState, setStateKey, getUserPresence } from '../state.js'
+import { getState, setStateKey, getUserPresence, onPresenceChange } from '../state.js'
 import { navigateTo } from '../router.js'
 
 // ------------------------------------------------------------
@@ -257,6 +257,22 @@ export async function renderChatView(root, param) {
   let typingFromOther = false
   let typingHideTimer = null
 
+  // presence subscription for the active chat user
+  let unsubscribePresence = null
+
+  function bindPresenceSubscription(otherId) {
+    if (unsubscribePresence) {
+      unsubscribePresence()
+      unsubscribePresence = null
+    }
+    if (!otherId) return
+
+    unsubscribePresence = onPresenceChange(otherId, () => {
+      // si está “typing…”, no lo pisamos; si no, actualizamos
+      if (!typingFromOther) renderHeaderSubtitle()
+    })
+  }
+
   function setTypingUI(on) {
     typingFromOther = Boolean(on)
     renderHeaderSubtitle()
@@ -269,22 +285,26 @@ export async function renderChatView(root, param) {
       return
     }
 
+    // typing…
     if (typingFromOther) {
       subtitleEl.textContent = 'typing…'
       return
     }
 
     const p = getUserPresence(otherId)
+
+    // ✅ SAME STYLE AS SIDEBAR
     if (p.online) {
-      subtitleEl.textContent = 'online'
-      return
-    }
-    if (p.lastSeenAt) {
-      subtitleEl.textContent = formatLastSeen(p.lastSeenAt)
+      subtitleEl.innerHTML = `<span class="chat-presence online">● online</span>`
       return
     }
 
-    subtitleEl.textContent = 'Chatting…'
+    if (p.lastSeenAt) {
+      subtitleEl.innerHTML = `<span class="chat-presence lastseen">${escapeHtml(formatLastSeen(p.lastSeenAt))}</span>`
+      return
+    }
+
+    subtitleEl.innerHTML = `<span class="chat-presence offline">● offline</span>`
   }
 
   // ---------------------------
@@ -763,6 +783,8 @@ export async function renderChatView(root, param) {
   if (selectedUserId) {
     const fallbackName = getState().chatWithUserName || null
     titleEl.textContent = fallbackName || 'Chat'
+
+    bindPresenceSubscription(selectedUserId) // ✅ AÑADE ESTO
     renderHeaderSubtitle()
 
     input.disabled = false
@@ -828,6 +850,11 @@ export async function renderChatView(root, param) {
 
       if (typingHideTimer) clearTimeout(typingHideTimer)
       typingHideTimer = null
+
+      if (unsubscribePresence) {
+        unsubscribePresence()
+        unsubscribePresence = null
+      }
     },
     { once: true }
   )
