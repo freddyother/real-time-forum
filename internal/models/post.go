@@ -20,6 +20,7 @@ type Post struct {
 	// Reactions (like for now)
 	ReactionsCount int64 `json:"reactions_count"`
 	IReacted       bool  `json:"i_reacted"`
+	ViewsCount     int64 `json:"views_count"`
 }
 
 // PostModel provides database operations for posts.
@@ -145,6 +146,7 @@ func (m *PostModel) GetWithReactions(ctx context.Context, id int64, viewerID int
       p.category,
       p.created_at,
       u.nickname AS author,
+	  p.views_count,
 
       -- total likes
       (SELECT COUNT(*) FROM post_reactions r
@@ -177,6 +179,7 @@ func (m *PostModel) GetWithReactions(ctx context.Context, id int64, viewerID int
 		&p.Author,
 		&p.ReactionsCount,
 		&iReactedInt,
+		&p.ViewsCount,
 	)
 	if err != nil {
 		return nil, err
@@ -197,6 +200,7 @@ func (m *PostModel) ListWithReactions(ctx context.Context, limit int, viewerID i
       p.category,
       p.created_at,
       u.nickname AS author,
+	  p.views_count,
 
       (SELECT COUNT(*) FROM post_reactions r
         WHERE r.post_id = p.id AND r.reaction = 'like'
@@ -236,6 +240,7 @@ func (m *PostModel) ListWithReactions(ctx context.Context, limit int, viewerID i
 			&p.Author,
 			&p.ReactionsCount,
 			&iReactedInt,
+			&p.ViewsCount,
 		); err != nil {
 			return nil, err
 		}
@@ -262,6 +267,7 @@ func (m *PostModel) ListWithReactionsPage(ctx context.Context, limit, offset int
       p.category,
       p.created_at,
       u.nickname AS author,
+	  p.views_count,
 
       (SELECT COUNT(*) FROM post_reactions r
         WHERE r.post_id = p.id AND r.reaction = 'like'
@@ -301,6 +307,7 @@ func (m *PostModel) ListWithReactionsPage(ctx context.Context, limit, offset int
 			&p.Author,
 			&p.ReactionsCount,
 			&iReactedInt,
+			&p.ViewsCount,
 		); err != nil {
 			return nil, false, err
 		}
@@ -315,8 +322,48 @@ func (m *PostModel) ListWithReactionsPage(ctx context.Context, limit, offset int
 
 	hasMore := int64(len(posts)) > limit
 	if hasMore {
-		posts = posts[:limit] // cortamos el extra
+		posts = posts[:limit] // cut -> extra
 	}
 
 	return posts, hasMore, nil
+}
+func (m *PostModel) RegisterView(ctx context.Context, postID, viewerID int64) (int64, error) {
+	// If there is no user (not logged in), we do not count (to maintain ‘1 per user’)..
+	if viewerID <= 0 {
+		var count int64
+		err := m.DB.QueryRowContext(ctx, `SELECT views_count FROM posts WHERE id=?`, postID).Scan(&count)
+		return count, err
+	}
+
+	// 1) Single insert (if it already existed, does nothing)
+	res, err := m.DB.ExecContext(ctx,
+		`INSERT OR IGNORE INTO post_views(post_id, user_id) VALUES(?, ?)`,
+		postID, viewerID,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	rows, _ := res.RowsAffected()
+
+	// 2) If inserted (first time), increase counter
+	if rows > 0 {
+		_, err = m.DB.ExecContext(ctx,
+			`UPDATE posts SET views_count = views_count + 1 WHERE id=?`,
+			postID,
+		)
+		if err != nil {
+			return 0, err
+		}
+	}
+
+	// 3) Returns current count
+	var count int64
+	err = m.DB.QueryRowContext(ctx, `SELECT views_count FROM posts WHERE id=?`, postID).Scan(&count)
+	return count, err
+}
+func (m *PostModel) CountViews(ctx context.Context, postID int64) (int64, error) {
+	var n int64
+	err := m.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM post_views WHERE post_id=?`, postID).Scan(&n)
+	return n, err
 }

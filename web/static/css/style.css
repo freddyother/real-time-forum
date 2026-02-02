@@ -477,6 +477,33 @@ textarea:focus {
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/*--------------------
+- view posts counter
+----------------------*/
+.post-views-row {
+  display: flex;
+  justify-content: flex-end;
+  padding: 6px 0 2px;
+}
+
+.post-views {
+  font-size: 14px;
+  color: var(--text-light);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+/*-------------------------
+divider
+---------------------------*/
+.post-divider {
+  border: none;
+  border-top: 1px solid rgba(0, 0, 0, 0.12);
+
+  margin: 12px 0 22px; /* up | down */
+}
+
 /*---------------------------------------*/
 .post-title {
   font-size: 18px;

@@ -202,3 +202,9 @@ export async function apiTogglePostReaction(postId, reaction = 'like') {
   // data: { post_id, reaction, reacted, reactions_count }
   return data
 }
+
+// POST /api/post/{id}/views     View Counter
+export async function apiRegisterPostView(postId) {
+  const data = await request(`/posts/${postId}/views`, { method: 'POST' })
+  return data // { post_id, views_count }
+}

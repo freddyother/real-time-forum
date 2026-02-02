@@ -1,7 +1,7 @@
 // Post Card Detail
 // web/static/js/views/view-post.js
 
-import { apiGetPost, apiAddComment, apiTogglePostReaction } from '../api.js'
+import { apiGetPost, apiAddComment, apiTogglePostReaction, apiRegisterPostView } from '../api.js'
 import { navigateTo } from '../router.js'
 
 export async function renderPostView(root, postId) {
@@ -22,13 +22,16 @@ export async function renderPostView(root, postId) {
   const post = data.post
   const comments = data.comments || []
 
-  // Reactions (server-driven if present; fallback safe)
-  const pid = Number(post.id || 0) || 0
-  const reactionsCount = Number(post.reactions_count ?? post.likes_count ?? 0) || 0
-  const iReacted = Boolean(post.i_reacted ?? post.i_liked ?? false)
+  // Reactions
+  const pid = Number(post?.id || 0) || 0
+  const reactionsCount = Number(post?.reactions_count ?? post?.likes_count ?? 0) || 0
+  const iReacted = Boolean(post?.i_reacted ?? post?.i_liked ?? false)
 
-  // Date formatting (keep your original if you prefer raw)
-  const created = post.created_at ? new Date(post.created_at).toLocaleString() : ''
+  // Views (ONLY in detail)
+  const initialViews = Number(post?.views_count ?? 0) || 0
+
+  // Date formatting
+  const created = post?.created_at ? new Date(post.created_at).toLocaleString() : ''
 
   container.innerHTML = `
     <div class="post-back" id="backToFeed">← Back to Feed</div>
@@ -36,37 +39,44 @@ export async function renderPostView(root, postId) {
     <div class="post-page-card">
       <!-- LINE 1: title + category -->
       <header class="post-page-header">
-        <h1 class="post-page-title">${post.title || 'Untitled'}</h1>
-        <span class="post-page-category">${post.category || 'General'}</span>
+        <h1 class="post-page-title">${post?.title || 'Untitled'}</h1>
+        <span class="post-page-category">${post?.category || 'General'}</span>
       </header>
 
       <!-- LINE 2: by/date (left) + reactions (right) -->
       <footer class="post-page-meta">
         <div class="post-meta-left">
-          <span>by <strong>${post.author || 'Unknown'}</strong></span>
+          <span>by <strong>${post?.author || 'Unknown'}</strong></span>
           ${created ? `<span>•</span><span>${created}</span>` : ''}
         </div>
 
         <button
-      class="reaction-btn ${iReacted ? 'reacted' : ''}"
-      type="button"
-      data-post-id="${postId || ''}"
-      aria-label="React to post"
-      title="Like"
-    >
-      <span class="reaction-icon" aria-hidden="true">
-        <svg viewBox="0 0 24 24" class="heart" focusable="false" aria-hidden="true">
-          <path d="M12 21s-7.2-4.6-9.7-8.7C.6 9.1 1.9 5.9 4.9 5.1c1.7-.5 3.5.1 4.6 1.5L12 9.1l2.5-2.5c1.1-1.4 2.9-2 4.6-1.5 3 .8 4.3 4 2.6 7.2C19.2 16.4 12 21 12 21z"/>
-        </svg>
-      </span>
-      <span class="reaction-text">${iReacted ? 'Liked' : 'Like'}</span>
-      <span class="reaction-dot">·</span>
-      <span class="reaction-count">${reactionsCount}</span>
-    </button>
+          class="reaction-btn ${iReacted ? 'reacted' : ''}"
+          type="button"
+          data-post-id="${postId || ''}"
+          aria-label="React to post"
+          title="Like"
+        >
+          <span class="reaction-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" class="heart" focusable="false" aria-hidden="true">
+              <path d="M12 21s-7.2-4.6-9.7-8.7C.6 9.1 1.9 5.9 4.9 5.1c1.7-.5 3.5.1 4.6 1.5L12 9.1l2.5-2.5c1.1-1.4 2.9-2 4.6-1.5 3 .8 4.3 4 2.6 7.2C19.2 16.4 12 21 12 21z"/>
+            </svg>
+          </span>
+          <span class="reaction-text">${iReacted ? 'Liked' : 'Like'}</span>
+          <span class="reaction-dot">·</span>
+          <span class="reaction-count">${reactionsCount}</span>
+        </button>
       </footer>
 
+      <!--  Views row (ONLY on detail) -->
+      <div class="post-views-row">
+        <span class="post-views" id="postViews">👁 ${initialViews} views</span>
+      </div>
+      
+      <hr class="post-divider" />
+
       <article class="post-page-content">
-        ${post.content || ''}
+        ${post?.content || ''}
       </article>
 
       <section class="post-comments">
@@ -75,16 +85,26 @@ export async function renderPostView(root, postId) {
         <div class="comments-list"></div>
 
         <form id="commentForm" class="comment-form">
-          <textarea
-            id="commentText"
-            placeholder="Write a reply…"
-            required
-          ></textarea>
+          <textarea id="commentText" placeholder="Write a reply…" required></textarea>
           <button type="submit">Add comment</button>
         </form>
       </section>
     </div>
   `
+
+  // ✅ Register view (updates counter in detail only)
+  if (pid) {
+    try {
+      const res = await apiRegisterPostView(pid)
+      const viewsEl = container.querySelector('#postViews')
+      if (viewsEl && res && typeof res.views_count === 'number') {
+        viewsEl.textContent = `👁 ${res.views_count} views`
+      }
+    } catch (err) {
+      console.warn('[VIEWS] could not register view:', err)
+      // keep initialViews
+    }
+  }
 
   // ---- COMMENTS ----
   const listEl = container.querySelector('.comments-list')

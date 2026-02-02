@@ -52,6 +52,14 @@ func RunMigrations(db *sql.DB) error {
 			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			FOREIGN KEY (user_id) REFERENCES users(id)
 		);`,
+		`CREATE TABLE IF NOT EXISTS post_views (
+  			post_id   INTEGER NOT NULL,
+ 		 	user_id   INTEGER NOT NULL,
+  			viewed_at DATETIME NOT NULL DEFAULT (datetime('now')),
+ 			PRIMARY KEY (post_id, user_id),
+  			FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
+  			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);`,
 
 		// Comments table: contains comments associated with posts.
 		`CREATE TABLE IF NOT EXISTS comments (

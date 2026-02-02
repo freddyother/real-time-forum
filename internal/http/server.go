@@ -256,6 +256,11 @@ func (s *Server) handlePostDetail(w http.ResponseWriter, r *http.Request) {
 		s.handlePostReactions(w, r)
 		return
 	}
+	if strings.HasSuffix(r.URL.Path, "/views") {
+		s.handlePostViews(w, r)
+		return
+	}
+
 	s.handlePostByID(w, r)
 }
 
@@ -584,5 +589,36 @@ func loggingMiddleware(next http.Handler) http.Handler {
 
 		duration := time.Since(start)
 		log.Printf("[HTTP] %s %s -> %d (%s)\n", r.Method, r.URL.Path, lrw.status, duration)
+	})
+}
+func (s *Server) handlePostViews(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// /api/posts/{id}/views
+	path := strings.TrimPrefix(r.URL.Path, "/api/posts/")
+	path = strings.TrimSuffix(path, "/views")
+
+	postID, err := strconv.ParseInt(path, 10, 64)
+	if err != nil || postID <= 0 {
+		http.Error(w, "invalid post id", http.StatusBadRequest)
+		return
+	}
+
+	// viewer optional
+	viewerID, _ := getUserIDFromContext(r)
+
+	count, err := s.posts.RegisterView(r.Context(), postID, viewerID)
+	if err != nil {
+		log.Println("[VIEWS] Register error:", err)
+		http.Error(w, "cannot register view", http.StatusInternalServerError)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"post_id":     postID,
+		"views_count": count,
 	})
 }
