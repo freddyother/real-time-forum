@@ -1,3 +1,4 @@
+// internal/models/post.go
 package models
 
 import (
@@ -244,4 +245,78 @@ func (m *PostModel) ListWithReactions(ctx context.Context, limit int, viewerID i
 	}
 
 	return posts, rows.Err()
+}
+
+// ListWithReactionsPage returns posts paginated with author + reactions info for viewer.
+// Uses LIMIT/OFFSET and also returns hasMore.
+func (m *PostModel) ListWithReactionsPage(ctx context.Context, limit, offset int64, viewerID int64) ([]Post, bool, error) {
+	// Pedimos 1 extra para saber si hay más
+	fetch := limit + 1
+
+	const query = `
+    SELECT
+      p.id,
+      p.user_id,
+      p.title,
+      p.content,
+      p.category,
+      p.created_at,
+      u.nickname AS author,
+
+      (SELECT COUNT(*) FROM post_reactions r
+        WHERE r.post_id = p.id AND r.reaction = 'like'
+      ) AS reactions_count,
+
+      CASE
+        WHEN ? <= 0 THEN 0
+        ELSE EXISTS(
+          SELECT 1 FROM post_reactions r2
+          WHERE r2.post_id = p.id AND r2.user_id = ? AND r2.reaction = 'like'
+        )
+      END AS i_reacted
+    FROM posts p
+    JOIN users u ON u.id = p.user_id
+    ORDER BY p.created_at DESC
+    LIMIT ? OFFSET ?;
+  `
+
+	rows, err := m.DB.QueryContext(ctx, query, viewerID, viewerID, fetch, offset)
+	if err != nil {
+		return nil, false, err
+	}
+	defer rows.Close()
+
+	posts := []Post{}
+	for rows.Next() {
+		var p Post
+		var iReactedInt int
+
+		if err := rows.Scan(
+			&p.ID,
+			&p.UserID,
+			&p.Title,
+			&p.Content,
+			&p.Category,
+			&p.CreatedAt,
+			&p.Author,
+			&p.ReactionsCount,
+			&iReactedInt,
+		); err != nil {
+			return nil, false, err
+		}
+
+		p.IReacted = iReactedInt == 1
+		posts = append(posts, p)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, false, err
+	}
+
+	hasMore := int64(len(posts)) > limit
+	if hasMore {
+		posts = posts[:limit] // cortamos el extra
+	}
+
+	return posts, hasMore, nil
 }

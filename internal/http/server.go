@@ -141,21 +141,42 @@ func writeJSON(w http.ResponseWriter, status int, data any) {
 func (s *Server) handlePosts(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		// ✅ viewerID optional (0 if no session)
 		viewerID, _ := getUserIDFromContext(r)
 
-		// ✅ List posts with reactions info
-		posts, err := s.posts.ListWithReactions(r.Context(), 100, viewerID)
+		// defaults
+		limit := int64(10)
+		offset := int64(0)
+
+		// read query params: ?limit=10&offset=0
+		if v := r.URL.Query().Get("limit"); v != "" {
+			if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 {
+				limit = n
+			}
+		}
+		if v := r.URL.Query().Get("offset"); v != "" {
+			if n, err := strconv.ParseInt(v, 10, 64); err == nil && n >= 0 {
+				offset = n
+			}
+		}
+
+		// clamp (seguridad)
+		if limit > 50 {
+			limit = 50
+		}
+
+		posts, hasMore, err := s.posts.ListWithReactionsPage(r.Context(), limit, offset, viewerID)
 		if err != nil {
 			log.Println("[POSTS] Error loading posts:", err)
 			http.Error(w, "cannot load posts", http.StatusInternalServerError)
 			return
 		}
 
-		log.Printf("[POSTS] Returned %d posts\n", len(posts))
+		nextOffset := offset + int64(len(posts))
 
 		writeJSON(w, http.StatusOK, map[string]any{
-			"posts": posts,
+			"posts":       posts,
+			"has_more":    hasMore,
+			"next_offset": nextOffset,
 		})
 
 	case http.MethodPost:

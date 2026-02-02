@@ -125,12 +125,18 @@ export function apiLogout() {
   return request('/logout', { method: 'POST' })
 }
 
-// Fetch list of posts and always return an array.
-export async function apiGetPosts() {
-  const data = await request('/posts')
+// Fetch paginated posts: GET /api/posts?limit=10&offset=0
+// Returns: { posts: [], has_more: boolean, next_offset: number }
+export async function apiGetPosts(limit = 10, offset = 0) {
+  const data = await request(`/posts?limit=${encodeURIComponent(limit)}&offset=${encodeURIComponent(offset)}`)
+
   const posts = Array.isArray(data?.posts) ? data.posts : []
-  console.log('[API] apiGetPosts -> posts length:', posts.length)
-  return posts
+  const hasMore = Boolean(data?.has_more)
+  const nextOffset = typeof data?.next_offset === 'number' ? data.next_offset : offset + posts.length
+
+  console.log('[API] apiGetPosts -> posts:', posts.length, 'has_more:', hasMore, 'next_offset:', nextOffset)
+
+  return { posts, hasMore, nextOffset }
 }
 
 export async function apiGetPost(id) {

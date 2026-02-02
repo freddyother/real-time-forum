@@ -391,6 +391,43 @@ textarea:focus {
   gap: 12px;
   margin-bottom: 20px; /*space between the header title+cat and the footer footer+reaction*/
 }
+/* -----------------------------------------
+   FEED - Load more button
+------------------------------------------ */
+.feed-load-more {
+  display: flex;
+  justify-content: center;
+  margin: 14px 0 28px;
+}
+
+.feed-load-more .nav-btn {
+  padding: 10px 18px;
+  min-width: 220px;
+
+  font-weight: 700;
+  font-size: 14px;
+
+  border: 1px solid rgba(139, 92, 246, 0.22);
+  background: rgba(139, 92, 246, 0.14);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.06);
+
+  transition: 0.15s ease;
+}
+
+.feed-load-more .nav-btn:hover {
+  background: rgba(139, 92, 246, 0.22);
+  transform: translateY(-1px);
+}
+
+.feed-load-more .nav-btn:active {
+  transform: translateY(0px);
+}
+
+.feed-load-more .nav-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
 
 .post-right {
   display: inline-flex;
