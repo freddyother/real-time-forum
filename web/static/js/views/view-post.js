@@ -37,43 +37,39 @@ export async function renderPostView(root, postId) {
     <div class="post-back" id="backToFeed">← Back to Feed</div>
 
     <div class="post-page-card">
-      <!-- LINE 1: title + category -->
       <header class="post-page-header">
         <h1 class="post-page-title">${post?.title || 'Untitled'}</h1>
         <span class="post-page-category">${post?.category || 'General'}</span>
       </header>
 
-      <!-- LINE 2: by/date (left) + reactions (right) -->
       <footer class="post-page-meta">
         <div class="post-meta-left">
           <span>by <strong>${post?.author || 'Unknown'}</strong></span>
           ${created ? `<span>•</span><span>${created}</span>` : ''}
         </div>
 
-        <button
-          class="reaction-btn ${iReacted ? 'reacted' : ''}"
-          type="button"
-          data-post-id="${postId || ''}"
-          aria-label="React to post"
-          title="Like"
-        >
-          <span class="reaction-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" class="heart" focusable="false" aria-hidden="true">
-              <path d="M12 21s-7.2-4.6-9.7-8.7C.6 9.1 1.9 5.9 4.9 5.1c1.7-.5 3.5.1 4.6 1.5L12 9.1l2.5-2.5c1.1-1.4 2.9-2 4.6-1.5 3 .8 4.3 4 2.6 7.2C19.2 16.4 12 21 12 21z"/>
-            </svg>
-          </span>
-          <span class="reaction-text">${iReacted ? 'Liked' : 'Like'}</span>
-          <span class="reaction-dot">·</span>
-          <span class="reaction-count">${reactionsCount}</span>
-        </button>
-      </footer>
+        <!-- RIGHT SIDE: views + likes juntos -->
+        <div class="post-meta-right">
+          <span class="post-views" id="postViews">👁 ${initialViews} views</span>
 
-      <!--  Views row (ONLY on detail) -->
-      <div class="post-views-row">
-        <span class="post-views" id="postViews">👁 ${initialViews} views</span>
-      </div>
-      
-      <hr class="post-divider" />
+          <button
+            class="reaction-btn ${iReacted ? 'reacted' : ''}"
+            type="button"
+            data-post-id="${postId || ''}"
+            aria-label="React to post"
+            title="Like"
+          >
+            <span class="reaction-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" class="heart" focusable="false" aria-hidden="true">
+                <path d="M12 21s-7.2-4.6-9.7-8.7C.6 9.1 1.9 5.9 4.9 5.1c1.7-.5 3.5.1 4.6 1.5L12 9.1l2.5-2.5c1.1-1.4 2.9-2 4.6-1.5 3 .8 4.3 4 2.6 7.2C19.2 16.4 12 21 12 21z"/>
+              </svg>
+            </span>
+            <span class="reaction-text">${iReacted ? 'Liked' : 'Like'}</span>
+            <span class="reaction-dot">·</span>
+            <span class="reaction-count">${reactionsCount}</span>
+          </button>
+        </div>
+      </footer>
 
       <article class="post-page-content">
         ${post?.content || ''}
@@ -81,7 +77,6 @@ export async function renderPostView(root, postId) {
 
       <section class="post-comments">
         <h2 class="comments-title">Comments (${comments.length})</h2>
-
         <div class="comments-list"></div>
 
         <form id="commentForm" class="comment-form">
@@ -92,7 +87,7 @@ export async function renderPostView(root, postId) {
     </div>
   `
 
-  // ✅ Register view (updates counter in detail only)
+  //  Register view (updates counter in detail only)
   if (pid) {
     try {
       const res = await apiRegisterPostView(pid)

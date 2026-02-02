@@ -493,6 +493,7 @@ textarea:focus {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  white-space: nowrap;
 }
 /*-------------------------
 divider
@@ -532,6 +533,11 @@ divider
   gap: 12px;
   font-size: 12px;
   color: var(--text-light);
+}
+.post-meta-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 16px; /* espace beetwen views and likes*/
 }
 
 .post-meta-left {
