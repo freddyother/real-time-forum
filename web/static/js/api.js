@@ -203,8 +203,27 @@ export async function apiTogglePostReaction(postId, reaction = 'like') {
   return data
 }
 
-// POST /api/post/{id}/views     View Counter
+// POST /api/posts/{id}/views     View Counter
 export async function apiRegisterPostView(postId) {
   const data = await request(`/posts/${postId}/views`, { method: 'POST' })
   return data // { post_id, views_count }
+}
+
+//Update Posts
+export async function apiUpdatePost(postId, patch) {
+  // PATCH /api/posts/{id}
+  const data = await request(`/posts/${postId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(patch),
+  })
+  return data
+}
+
+export async function apiUpdateComment(commentId, content) {
+  // PATCH /api/comments/{id}
+  const data = await request(`/comments/${commentId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ content }),
+  })
+  return data
 }

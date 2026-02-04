@@ -50,23 +50,18 @@ func NewServer(db *sql.DB, hub *ws.Hub) *Server {
 
 	// Wire WS persistence (save to DB before broadcast).
 	hub.OnMessage = func(ctx context.Context, in ws.MessageEvent) (ws.MessageEvent, error) {
-		// Save the message in DB and return the persisted message.
 		msg, err := s.messages.Create(ctx, in.FromUserID, in.ToUserID, in.Content)
 		if err != nil {
 			return in, err
 		}
-
 		in.ID = msg.ID
 		in.SentAt = msg.SentAt.UTC().Format(time.RFC3339)
 		in.Seen = false
 		return in, nil
 	}
+
 	// 1) DELIVERED: recipient acks, we persist and notify sender
 	hub.OnDelivered = func(ctx context.Context, receiverID, messageID int64) (int64, string, error) {
-		// Debe:
-		// - validar que receiverID es el to_user_id de ese messageID
-		// - set delivered=1, delivered_at=NOW
-		// - devolver from_user_id (para avisar al sender)
 		fromUserID, deliveredAt, err := s.messages.MarkDelivered(ctx, receiverID, messageID)
 		if err != nil {
 			return 0, "", err
@@ -76,16 +71,13 @@ func NewServer(db *sql.DB, hub *ws.Hub) *Server {
 
 	// 2) SEEN: viewer opens chat, we persist and notify sender with seen_up_to_id
 	hub.OnSeen = func(ctx context.Context, viewerID, otherUserID int64) (int64, int64, int64, string, error) {
-		// Debe:
-		// - marcar seen=1, seen_at=NOW para mensajes: from=otherUserID AND to=viewerID AND seen=0
-		// - devolver seenUpToID (max id marcado)
 		seenUpToID, seenAt, err := s.messages.MarkSeenConversation(ctx, viewerID, otherUserID)
 		if err != nil {
 			return 0, 0, 0, "", err
 		}
-		// fromUserID = otherUserID (sender original), toUserID = viewerID (quien vio)
 		return otherUserID, viewerID, seenUpToID, seenAt.UTC().Format(time.RFC3339), nil
 	}
+
 	// offline-Online
 	hub.OnOffline = func(ctx context.Context, userID int64) (string, error) {
 		now := time.Now().UTC()
@@ -98,56 +90,42 @@ func NewServer(db *sql.DB, hub *ws.Hub) *Server {
 	return s
 }
 
-/*
-------------------------------------------------------------
-// handleChatWS upgrades the request to a WebSocket connection
-// and links the client to the Hub using the authenticated user ID.
-----------------------------------------------------------------------
-*/
+// handleChatWS upgrades to WebSocket.
 func (s *Server) handleChatWS(w http.ResponseWriter, r *http.Request) {
-
-	// Log incoming WS attempts.
 	log.Printf("[WS] Incoming %s %s from=%s", r.Method, r.URL.Path, r.RemoteAddr)
 
-	// Only allow GET requests for WebSocket upgrade.
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	// User must be authenticated (set by withSessionMiddleware).
 	userID, ok := getUserIDFromContext(r)
 	if !ok {
 		http.Error(w, "unauthorised", http.StatusUnauthorized)
 		return
 	}
 
-	// Upgrade the connection and register the client in the hub.
 	s.hub.HandleChat(w, r, userID)
 }
 
-// writeJSON sends a JSON-encoded response with a given status code.
 func writeJSON(w http.ResponseWriter, status int, data any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(data)
 }
 
-// -------------------------------------------------------------------------------------------------------------------
-//	handlePosts function (list/create posts)
-// -------------------------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------
+// POSTS (list/create)
+// ------------------------------------------------------------
 
-// handlePosts routes GET and POST requests for forum posts.
 func (s *Server) handlePosts(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
 		viewerID, _ := getUserIDFromContext(r)
 
-		// defaults
 		limit := int64(10)
 		offset := int64(0)
 
-		// read query params: ?limit=10&offset=0
 		if v := r.URL.Query().Get("limit"); v != "" {
 			if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 {
 				limit = n
@@ -158,8 +136,6 @@ func (s *Server) handlePosts(w http.ResponseWriter, r *http.Request) {
 				offset = n
 			}
 		}
-
-		// clamp (seguridad)
 		if limit > 50 {
 			limit = 50
 		}
@@ -180,7 +156,6 @@ func (s *Server) handlePosts(w http.ResponseWriter, r *http.Request) {
 		})
 
 	case http.MethodPost:
-		// Only authenticated users can create posts.
 		userID, ok := getUserIDFromContext(r)
 		if !ok {
 			http.Error(w, "unauthorised", http.StatusUnauthorized)
@@ -193,23 +168,22 @@ func (s *Server) handlePosts(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		req.Title = strings.TrimSpace(req.Title)
+		req.Content = strings.TrimSpace(req.Content)
+		req.Category = strings.TrimSpace(req.Category)
+
 		if req.Title == "" || req.Content == "" {
 			http.Error(w, "title and content are required", http.StatusBadRequest)
 			return
 		}
-
-		// If the frontend did not send a category, fall back to "General".
 		if req.Category == "" {
 			req.Category = "General"
 		}
 
-		// Ensure the category exists in the categories table.
 		const maxCategories = 30
-
 		cat, err := s.categories.Ensure(r.Context(), req.Category, maxCategories)
 		if err != nil {
 			if errors.Is(err, models.ErrCategoryLimit) {
-				log.Println("[POSTS] Category limit reached")
 				http.Error(w, "category limit reached (30)", http.StatusBadRequest)
 				return
 			}
@@ -222,7 +196,7 @@ func (s *Server) handlePosts(w http.ResponseWriter, r *http.Request) {
 			UserID:   userID,
 			Title:    req.Title,
 			Content:  req.Content,
-			Category: cat.Name, // use normalised category name from DB
+			Category: cat.Name,
 		}
 
 		if err := s.posts.Create(r.Context(), post); err != nil {
@@ -231,22 +205,17 @@ func (s *Server) handlePosts(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		log.Printf("[POSTS] Created post id=%d by user=%d in category=%q\n", post.ID, userID, post.Category)
-
-		writeJSON(w, http.StatusCreated, map[string]any{
-			"post": post,
-		})
+		writeJSON(w, http.StatusCreated, map[string]any{"post": post})
 
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
 }
 
-// -------------------------------------------------------------------------------------------------------------------
-//	Single post + comments
-// -------------------------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------
+// POST DETAIL router (/api/posts/{id} + subroutes)
+// ------------------------------------------------------------
 
-// handlePostDetail decide si la ruta es /api/posts/{id} o /api/posts/{id}/comments
 func (s *Server) handlePostDetail(w http.ResponseWriter, r *http.Request) {
 	if strings.HasSuffix(r.URL.Path, "/comments") {
 		s.handlePostComments(w, r)
@@ -260,25 +229,19 @@ func (s *Server) handlePostDetail(w http.ResponseWriter, r *http.Request) {
 		s.handlePostViews(w, r)
 		return
 	}
-
 	s.handlePostByID(w, r)
 }
 
-// handlePostByID handle GET /api/posts/{id}
-// Devuelve { "post": {...}, "comments": [...] }
-func (s *Server) handlePostByID(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
+// ------------------------------------------------------------
+// POST BY ID: GET + PATCH
+// ------------------------------------------------------------
 
-	// extraer ID de /api/posts/{id}
+func (s *Server) handlePostByID(w http.ResponseWriter, r *http.Request) {
 	idStr := strings.TrimPrefix(r.URL.Path, "/api/posts/")
 	if idStr == "" {
 		http.Error(w, "missing post id", http.StatusBadRequest)
 		return
 	}
-	// in case there are sub-routes
 	if idx := strings.IndexRune(idStr, '/'); idx != -1 {
 		idStr = idStr[:idx]
 	}
@@ -289,40 +252,91 @@ func (s *Server) handlePostByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// ✅ viewerID optional (0 if no session)
 	viewerID, _ := getUserIDFromContext(r)
 
-	// ✅ Get post with reactions info
-	post, err := s.posts.GetWithReactions(r.Context(), postID, viewerID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			http.Error(w, "post not found", http.StatusNotFound)
+	switch r.Method {
+
+	case http.MethodGet:
+		post, err := s.posts.GetWithReactions(r.Context(), postID, viewerID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				http.Error(w, "post not found", http.StatusNotFound)
+				return
+			}
+			log.Println("[POST] Get error:", err)
+			http.Error(w, "cannot load post", http.StatusInternalServerError)
 			return
 		}
-		log.Println("[POST] Get error:", err)
-		http.Error(w, "cannot load post", http.StatusInternalServerError)
+
+		comments, err := s.comments.ListByPost(r.Context(), postID)
+		if err != nil {
+			log.Println("[POST] Comments error:", err)
+			http.Error(w, "cannot load comments", http.StatusInternalServerError)
+			return
+		}
+
+		writeJSON(w, http.StatusOK, map[string]any{
+			"post":     post,
+			"comments": comments,
+		})
+		return
+
+	case http.MethodPatch:
+		if viewerID <= 0 {
+			http.Error(w, "unauthorised", http.StatusUnauthorized)
+			return
+		}
+
+		var req struct {
+			Title    *string `json:"title"`
+			Content  *string `json:"content"`
+			Category *string `json:"category"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "invalid json body", http.StatusBadRequest)
+			return
+		}
+
+		if req.Title != nil && strings.TrimSpace(*req.Title) == "" {
+			http.Error(w, "title cannot be empty", http.StatusBadRequest)
+			return
+		}
+		if req.Content != nil && strings.TrimSpace(*req.Content) == "" {
+			http.Error(w, "content cannot be empty", http.StatusBadRequest)
+			return
+		}
+
+		if err := s.posts.UpdateByOwner(r.Context(), postID, viewerID, req.Title, req.Content, req.Category); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				http.Error(w, "forbidden", http.StatusForbidden)
+				return
+			}
+			log.Println("[POST] Update error:", err)
+			http.Error(w, "cannot update post", http.StatusInternalServerError)
+			return
+		}
+
+		updated, err := s.posts.GetWithReactions(r.Context(), postID, viewerID)
+		if err != nil {
+			log.Println("[POST] Reload error:", err)
+			http.Error(w, "cannot load updated post", http.StatusInternalServerError)
+			return
+		}
+
+		writeJSON(w, http.StatusOK, map[string]any{"post": updated})
+		return
+
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-
-	comments, err := s.comments.ListByPost(r.Context(), postID)
-	if err != nil {
-		log.Println("[POST] Comments error:", err)
-		http.Error(w, "cannot load comments", http.StatusInternalServerError)
-		return
-	}
-
-	writeJSON(w, http.StatusOK, map[string]any{
-		"post":     post,
-		"comments": comments,
-	})
 }
 
 // ------------------------------------------------------------
-//                      HandlePostreactions
+// POST REACTIONS
 // ------------------------------------------------------------
 
 func (s *Server) handlePostReactions(w http.ResponseWriter, r *http.Request) {
-	// /api/posts/{id}/reactions
 	path := strings.TrimPrefix(r.URL.Path, "/api/posts/")
 	path = strings.TrimSuffix(path, "/reactions")
 
@@ -332,7 +346,6 @@ func (s *Server) handlePostReactions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// optional payload: { "reaction": "like" }
 	reaction := "like"
 	if r.Method == http.MethodPost {
 		var req struct {
@@ -346,16 +359,13 @@ func (s *Server) handlePostReactions(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case http.MethodGet:
-		// If logged in we can also return i_reacted
 		userID, _ := getUserIDFromContext(r)
-
 		count, iReacted, err := s.getReactionInfo(r.Context(), postID, userID, reaction)
 		if err != nil {
 			log.Println("[REACTIONS] Get error:", err)
 			http.Error(w, "cannot load reactions", http.StatusInternalServerError)
 			return
 		}
-
 		writeJSON(w, http.StatusOK, map[string]any{
 			"post_id":         postID,
 			"reaction":        reaction,
@@ -369,14 +379,12 @@ func (s *Server) handlePostReactions(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "unauthorised", http.StatusUnauthorized)
 			return
 		}
-
 		reacted, count, err := s.toggleReaction(r.Context(), postID, userID, reaction)
 		if err != nil {
 			log.Println("[REACTIONS] Toggle error:", err)
 			http.Error(w, "cannot react", http.StatusInternalServerError)
 			return
 		}
-
 		writeJSON(w, http.StatusOK, map[string]any{
 			"post_id":         postID,
 			"reaction":        reaction,
@@ -390,7 +398,6 @@ func (s *Server) handlePostReactions(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) toggleReaction(ctx context.Context, postID, userID int64, reaction string) (bool, int64, error) {
-	// 1) try delete (if existed)
 	delRes, err := s.db.ExecContext(ctx,
 		`DELETE FROM post_reactions WHERE post_id=? AND user_id=? AND reaction=?`,
 		postID, userID, reaction,
@@ -402,7 +409,6 @@ func (s *Server) toggleReaction(ctx context.Context, postID, userID int64, react
 	rows, _ := delRes.RowsAffected()
 	reactedNow := false
 
-	// 2) if nothing deleted -> insert
 	if rows == 0 {
 		_, err := s.db.ExecContext(ctx,
 			`INSERT INTO post_reactions(post_id, user_id, reaction) VALUES(?,?,?)`,
@@ -414,13 +420,11 @@ func (s *Server) toggleReaction(ctx context.Context, postID, userID int64, react
 		reactedNow = true
 	}
 
-	// 3) count
 	var count int64
-	err = s.db.QueryRowContext(ctx,
+	if err := s.db.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM post_reactions WHERE post_id=? AND reaction=?`,
 		postID, reaction,
-	).Scan(&count)
-	if err != nil {
+	).Scan(&count); err != nil {
 		return reactedNow, 0, err
 	}
 
@@ -428,11 +432,10 @@ func (s *Server) toggleReaction(ctx context.Context, postID, userID int64, react
 }
 
 func (s *Server) getReactionInfo(ctx context.Context, postID, userID int64, reaction string) (count int64, iReacted bool, err error) {
-	err = s.db.QueryRowContext(ctx,
+	if err := s.db.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM post_reactions WHERE post_id=? AND reaction=?`,
 		postID, reaction,
-	).Scan(&count)
-	if err != nil {
+	).Scan(&count); err != nil {
 		return 0, false, err
 	}
 
@@ -441,25 +444,23 @@ func (s *Server) getReactionInfo(ctx context.Context, postID, userID int64, reac
 	}
 
 	var exists int
-	err = s.db.QueryRowContext(ctx,
+	if err := s.db.QueryRowContext(ctx,
 		`SELECT EXISTS(
-      SELECT 1 FROM post_reactions WHERE post_id=? AND user_id=? AND reaction=?
-    )`,
+			SELECT 1 FROM post_reactions WHERE post_id=? AND user_id=? AND reaction=?
+		)`,
 		postID, userID, reaction,
-	).Scan(&exists)
-	if err != nil {
+	).Scan(&exists); err != nil {
 		return count, false, err
 	}
 
 	return count, exists == 1, nil
 }
 
-// handlePostComments handle:
-//
-//	GET  /api/posts/{id}/comments  -> list comments
-//	POST /api/posts/{id}/comments  -> create comment
+// ------------------------------------------------------------
+// COMMENTS on a post (list/create)
+// ------------------------------------------------------------
+
 func (s *Server) handlePostComments(w http.ResponseWriter, r *http.Request) {
-	// r.URL.Path: /api/posts/{id}/comments
 	path := strings.TrimPrefix(r.URL.Path, "/api/posts/")
 	path = strings.TrimSuffix(path, "/comments")
 
@@ -477,9 +478,7 @@ func (s *Server) handlePostComments(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "cannot load comments", http.StatusInternalServerError)
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{
-			"comments": comments,
-		})
+		writeJSON(w, http.StatusOK, map[string]any{"comments": comments})
 
 	case http.MethodPost:
 		userID, ok := getUserIDFromContext(r)
@@ -513,41 +512,123 @@ func (s *Server) handlePostComments(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		writeJSON(w, http.StatusCreated, map[string]any{
-			"comment": comment,
-		})
+		writeJSON(w, http.StatusCreated, map[string]any{"comment": comment})
 
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
 }
 
-// Router configures and returns the main HTTP handler.
+// ------------------------------------------------------------
+// VIEWS
+// ------------------------------------------------------------
+
+func (s *Server) handlePostViews(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	path := strings.TrimPrefix(r.URL.Path, "/api/posts/")
+	path = strings.TrimSuffix(path, "/views")
+
+	postID, err := strconv.ParseInt(path, 10, 64)
+	if err != nil || postID <= 0 {
+		http.Error(w, "invalid post id", http.StatusBadRequest)
+		return
+	}
+
+	viewerID, _ := getUserIDFromContext(r)
+
+	count, err := s.posts.RegisterView(r.Context(), postID, viewerID)
+	if err != nil {
+		log.Println("[VIEWS] Register error:", err)
+		http.Error(w, "cannot register view", http.StatusInternalServerError)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"post_id":     postID,
+		"views_count": count,
+	})
+}
+
+// ------------------------------------------------------------
+// COMMENT BY ID (edit comment) -> PATCH /api/comments/{id}
+// ------------------------------------------------------------
+
+func (s *Server) handleCommentByID(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPatch {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, ok := getUserIDFromContext(r)
+	if !ok || userID <= 0 {
+		http.Error(w, "unauthorised", http.StatusUnauthorized)
+		return
+	}
+
+	idStr := strings.TrimPrefix(r.URL.Path, "/api/comments/")
+	if idStr == "" {
+		http.Error(w, "missing comment id", http.StatusBadRequest)
+		return
+	}
+	if idx := strings.IndexRune(idStr, '/'); idx != -1 {
+		idStr = idStr[:idx]
+	}
+
+	commentID, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil || commentID <= 0 {
+		http.Error(w, "invalid comment id", http.StatusBadRequest)
+		return
+	}
+
+	var req struct {
+		Content string `json:"content"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+
+	updated, err := s.comments.UpdateByOwner(r.Context(), commentID, userID, req.Content)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		log.Println("[COMMENT] update error:", err)
+		http.Error(w, "cannot update comment", http.StatusInternalServerError)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"comment": updated})
+}
+
+// ------------------------------------------------------------
+// Router
+// ------------------------------------------------------------
+
 func (s *Server) Router() http.Handler {
 	mux := http.NewServeMux()
 
-	// Frontend assets.
 	mux.Handle("/", http.FileServer(http.Dir("./web")))
 
-	// API routes.
 	mux.HandleFunc("/api/register", s.handleRegister)
 	mux.HandleFunc("/api/login", s.handleLogin)
 	mux.HandleFunc("/api/logout", s.handleLogout)
 
-	// List / create posts
 	mux.HandleFunc("/api/posts", s.handlePosts)
-	// Detail post + comments
 	mux.HandleFunc("/api/posts/", s.handlePostDetail)
 
-	// WebSocket endpoint.
+	mux.HandleFunc("/api/comments/", s.handleCommentByID)
+
 	mux.HandleFunc("/ws/chat", s.handleChatWS)
 
-	// handle messages
 	mux.HandleFunc("/api/messages/", s.handleMessages)
-	// handle users
 	mux.HandleFunc("/api/users", s.handleUsers)
 
-	// Wrap with session middleware and logging middleware.
 	handler := s.withSessionMiddleware(mux)
 	return loggingMiddleware(handler)
 }
@@ -572,14 +653,12 @@ func (lrw *loggingResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) 
 	return hj.Hijack()
 }
 
-// Flush passes through the http.Flusher interface (nice for streaming).
 func (lrw *loggingResponseWriter) Flush() {
 	if f, ok := lrw.ResponseWriter.(http.Flusher); ok {
 		f.Flush()
 	}
 }
 
-// loggingMiddleware logs method, path, status and duration for each request.
 func loggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
@@ -589,36 +668,5 @@ func loggingMiddleware(next http.Handler) http.Handler {
 
 		duration := time.Since(start)
 		log.Printf("[HTTP] %s %s -> %d (%s)\n", r.Method, r.URL.Path, lrw.status, duration)
-	})
-}
-func (s *Server) handlePostViews(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	// /api/posts/{id}/views
-	path := strings.TrimPrefix(r.URL.Path, "/api/posts/")
-	path = strings.TrimSuffix(path, "/views")
-
-	postID, err := strconv.ParseInt(path, 10, 64)
-	if err != nil || postID <= 0 {
-		http.Error(w, "invalid post id", http.StatusBadRequest)
-		return
-	}
-
-	// viewer optional
-	viewerID, _ := getUserIDFromContext(r)
-
-	count, err := s.posts.RegisterView(r.Context(), postID, viewerID)
-	if err != nil {
-		log.Println("[VIEWS] Register error:", err)
-		http.Error(w, "cannot register view", http.StatusInternalServerError)
-		return
-	}
-
-	writeJSON(w, http.StatusOK, map[string]any{
-		"post_id":     postID,
-		"views_count": count,
 	})
 }

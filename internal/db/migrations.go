@@ -52,6 +52,7 @@ func RunMigrations(db *sql.DB) error {
 			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			FOREIGN KEY (user_id) REFERENCES users(id)
 		);`,
+		// Post View table
 		`CREATE TABLE IF NOT EXISTS post_views (
   			post_id   INTEGER NOT NULL,
  		 	user_id   INTEGER NOT NULL,
@@ -142,6 +143,16 @@ func RunMigrations(db *sql.DB) error {
 		return err
 	}
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_messages_to_seen ON messages(to_user_id, seen, sent_at);`); err != nil {
+		return err
+	}
+	// adding columns
+	if err := execIgnoreDuplicateColumn(db, `ALTER TABLE posts ADD COLUMN views_count INTEGER NOT NULL DEFAULT 0;`); err != nil {
+		return err
+	}
+	if err := execIgnoreDuplicateColumn(db, `ALTER TABLE posts ADD COLUMN edited_at DATETIME;`); err != nil {
+		return err
+	}
+	if err := execIgnoreDuplicateColumn(db, `ALTER TABLE comments ADD COLUMN edited_at DATETIME;`); err != nil {
 		return err
 	}
 

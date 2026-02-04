@@ -4,6 +4,8 @@ package models
 import (
 	"context"
 	"database/sql"
+	"errors"
+	"strings"
 	"time"
 )
 
@@ -177,9 +179,9 @@ func (m *PostModel) GetWithReactions(ctx context.Context, id int64, viewerID int
 		&p.Category,
 		&p.CreatedAt,
 		&p.Author,
+		&p.ViewsCount,
 		&p.ReactionsCount,
 		&iReactedInt,
-		&p.ViewsCount,
 	)
 	if err != nil {
 		return nil, err
@@ -238,9 +240,9 @@ func (m *PostModel) ListWithReactions(ctx context.Context, limit int, viewerID i
 			&p.Category,
 			&p.CreatedAt,
 			&p.Author,
+			&p.ViewsCount,
 			&p.ReactionsCount,
 			&iReactedInt,
-			&p.ViewsCount,
 		); err != nil {
 			return nil, err
 		}
@@ -305,9 +307,9 @@ func (m *PostModel) ListWithReactionsPage(ctx context.Context, limit, offset int
 			&p.Category,
 			&p.CreatedAt,
 			&p.Author,
+			&p.ViewsCount,
 			&p.ReactionsCount,
 			&iReactedInt,
-			&p.ViewsCount,
 		); err != nil {
 			return nil, false, err
 		}
@@ -366,4 +368,56 @@ func (m *PostModel) CountViews(ctx context.Context, postID int64) (int64, error)
 	var n int64
 	err := m.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM post_views WHERE post_id=?`, postID).Scan(&n)
 	return n, err
+}
+
+// UpdateByOwner updates ONLY provided fields, and ONLY if owner matches.
+// Returns sql.ErrNoRows if not found or not owner.
+func (m *PostModel) UpdateByOwner(ctx context.Context, postID, ownerID int64, title, content, category *string) error {
+	setParts := []string{}
+	args := []any{}
+
+	if title != nil {
+		t := strings.TrimSpace(*title)
+		if t == "" {
+			return errors.New("title cannot be empty")
+		}
+		setParts = append(setParts, "title = ?")
+		args = append(args, t)
+	}
+
+	if content != nil {
+		c := strings.TrimSpace(*content)
+		if c == "" {
+			return errors.New("content cannot be empty")
+		}
+		setParts = append(setParts, "content = ?")
+		args = append(args, c)
+	}
+
+	if category != nil {
+		setParts = append(setParts, "category = ?")
+		args = append(args, strings.TrimSpace(*category))
+	}
+
+	if len(setParts) == 0 {
+		return errors.New("no fields to update")
+	}
+
+	// Optional edited marker
+	setParts = append(setParts, "edited_at = datetime('now')")
+
+	args = append(args, postID, ownerID)
+
+	q := `UPDATE posts SET ` + strings.Join(setParts, ", ") + ` WHERE id = ? AND user_id = ?`
+	res, err := m.DB.ExecContext(ctx, q, args...)
+	if err != nil {
+		return err
+	}
+
+	aff, _ := res.RowsAffected()
+	if aff == 0 {
+		return sql.ErrNoRows
+	}
+
+	return nil
 }
