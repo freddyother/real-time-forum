@@ -214,21 +214,34 @@ export function onPresenceChange(userId, cb) {
 // ---------------------------
 
 export function setPresenceSnapshot(onlineIds = []) {
+  const onlineSet = new Set((onlineIds || []).map((id) => Number(id)).filter(Boolean))
+
   const next = { ...state.presenceByUser }
 
-  // mark provided online users as online (do not forcibly offline others here)
-  for (const id of onlineIds) {
-    const uid = Number(id)
+  // 1) First: everyone goes offline (but we keep lastSeenAt)
+  for (const uidStr of Object.keys(next)) {
+    const uid = Number(uidStr)
     if (!uid) continue
     const prev = next[uid] || { online: false, lastSeenAt: null }
-    next[uid] = { ...prev, online: true }
+    next[uid] = { ...prev, online: false }
+  }
+
+  // 2) Then: we mark only those from the snapshot online.
+  for (const uid of onlineSet) {
+    const prev = next[uid] || { online: false, lastSeenAt: null }
+    next[uid] = {
+      ...prev,
+      online: true,
+      // opcional: When online, lastSeenAt does not apply.
+      // lastSeenAt: null,
+    }
   }
 
   state.presenceByUser = next
 
-  // notify listeners for those ids
-  for (const id of onlineIds) {
-    const uid = Number(id)
+  // 3) Notify EVERYONE (because many have changed)
+  for (const uidStr of Object.keys(next)) {
+    const uid = Number(uidStr)
     if (uid) notifyPresence(uid)
   }
 
