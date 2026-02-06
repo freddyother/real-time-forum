@@ -184,6 +184,8 @@ export async function renderPostView(root, postId) {
     const editBtn = item.querySelector('.comment-edit-btn')
     if (editBtn) {
       editBtn.addEventListener('click', async () => {
+        container.classList.add('is-editing-comment')
+
         const p = item.querySelector('.comment-text')
         const old = p.textContent
 
@@ -201,10 +203,14 @@ export async function renderPostView(root, postId) {
         const input = wrap.querySelector('.comment-edit-input')
 
         wrap.querySelector('.comment-cancel')?.addEventListener('click', () => {
+          container.classList.remove('is-editing-comment')
+
           wrap.outerHTML = `<p class="comment-text">${escapeHtml(old)}</p>`
         })
 
         wrap.querySelector('.comment-save')?.addEventListener('click', async () => {
+          container.classList.remove('is-editing-comment')
+
           const next = input.value.trim()
           if (!next) return
           try {

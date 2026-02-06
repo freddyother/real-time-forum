@@ -1674,3 +1674,13 @@ menu + edits
 .post-comments {
   padding-bottom: 10px;
 }
+/* EDIT MODE: hide ALL "Edit" buttons (post + comments) */
+.post-page.is-editing-post #editPostBtn,
+.post-page.is-editing-post .comment-edit-btn {
+  display: none !important;
+}
+/* COMMENT EDIT MODE: hide all "Edit" buttons while editing a comment */
+.post-page.is-editing-comment #editPostBtn,
+.post-page.is-editing-comment .comment-edit-btn {
+  display: none !important;
+}
