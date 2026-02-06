@@ -174,7 +174,10 @@ export async function renderPostView(root, postId) {
       <div class="comment-body">
         <div class="comment-header">
           <span class="comment-author">${escapeHtml(c.author || 'Unknown')}</span>
-          <span class="comment-date">${escapeHtml(c.created_at || '')}</span>
+          <span class="comment-date">
+  ${c.created_at ? new Date(c.created_at).toLocaleString() : ''}
+</span>
+
           ${isMine ? `<button type="button" class="comment-edit-btn">Edit</button>` : ``}
         </div>
         <p class="comment-text">${escapeHtml(c.content || '')}</p>
