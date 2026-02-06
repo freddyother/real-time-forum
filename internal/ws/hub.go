@@ -180,8 +180,10 @@ func (h *Hub) sendToUser(userID int64, payload any) {
 		select {
 		case c.send <- payload:
 		default:
-			// Mark as dead: unregister will remove + close safely in one place
-			h.unregister <- c
+			// DO NOT BLOCK the hub.Run
+			go func(cl *Client) {
+				h.unregister <- cl
+			}(c)
 		}
 	}
 }

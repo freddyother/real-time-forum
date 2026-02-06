@@ -41,18 +41,6 @@ function handleRoute() {
   const app = document.getElementById('app')
   app.innerHTML = ''
 
-  // ✅ Sidebar root (global)
-  const sidebarRoot = document.getElementById('sidebar-chat')
-  if (sidebarRoot) {
-    // If not logged in -> empty (main.js will hide it anyway)
-    if (!user) {
-      sidebarRoot.innerHTML = ''
-    } else {
-      // If logged in -> render it always
-      renderChatSidebar(sidebarRoot) // no need await
-    }
-  }
-
   // --- ROUTE PROTECTION ---
   if (!user && view !== 'login' && view !== 'register') {
     renderAuthView(app, 'login')

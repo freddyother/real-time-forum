@@ -16,6 +16,9 @@ const state = {
 
   // { [userId]: { online: boolean, lastSeenAt: string|null } }
   presenceByUser: {},
+
+  // NEW: unread counter by userId
+  unreadMessages: {}, // { [otherUserId]: number }
 }
 
 // In-memory persisted store (loaded from localStorage once)
@@ -63,7 +66,13 @@ function restoreLastChatForCurrentUser() {
   if (!me) return
 
   const saved = persisted.lastChatByUser[String(me)]
-  if (!saved) return
+
+  // if there is NO chat saved for this user, reset
+  if (!saved) {
+    state.chatWithUserId = null
+    state.chatWithUserName = null
+    return
+  }
 
   state.chatWithUserId = saved.chatWithUserId ?? null
   state.chatWithUserName = saved.chatWithUserName ?? null
@@ -248,4 +257,81 @@ export function setUserPresence(userId, online, lastSeenAt = null) {
 export function getUserPresence(userId) {
   const uid = Number(userId)
   return state.presenceByUser[uid] || { online: false, lastSeenAt: null }
+}
+
+// ---------------------------
+// Unread messages helpers
+// ---------------------------
+
+export function getUnreadCount(otherUserId) {
+  const uid = Number(otherUserId)
+  if (!uid) return 0
+  return Number(state.unreadMessages?.[uid] || 0)
+}
+
+export function incrementUnread(otherUserId, by = 1) {
+  const uid = Number(otherUserId)
+  if (!uid) return
+
+  const current = Number(state.unreadMessages?.[uid] || 0)
+  const next = Math.max(0, current + Number(by || 1))
+
+  state.unreadMessages = {
+    ...(state.unreadMessages || {}),
+    [uid]: next,
+  }
+
+  // si alguien escucha unreadMessages por key, disparamos:
+  const set = keyedListeners['unreadMessages']
+  if (set) {
+    for (const cb of set) {
+      try {
+        cb(state.unreadMessages)
+      } catch (e) {
+        console.error('[state] listener error for key unreadMessages', e)
+      }
+    }
+  }
+
+  notify()
+}
+
+export function clearUnread(otherUserId) {
+  const uid = Number(otherUserId)
+  if (!uid) return
+  if (!state.unreadMessages || !state.unreadMessages[uid]) return
+
+  const next = { ...(state.unreadMessages || {}) }
+  delete next[uid]
+  state.unreadMessages = next
+
+  const set = keyedListeners['unreadMessages']
+  if (set) {
+    for (const cb of set) {
+      try {
+        cb(state.unreadMessages)
+      } catch (e) {
+        console.error('[state] listener error for key unreadMessages', e)
+      }
+    }
+  }
+
+  notify()
+}
+
+export function clearAllUnread() {
+  state.unreadMessages = {}
+
+  const set = keyedListeners['unreadMessages']
+  if (set) {
+    for (const cb of set) {
+      try {
+        cb(state.unreadMessages)
+      } catch (e) {
+        console.error('[state] listener error for key unreadMessages', e)
+      }
+    }
+  }
+
+  notify()
 }

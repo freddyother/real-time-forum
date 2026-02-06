@@ -1,3 +1,4 @@
+// internal/models/message.go
 package models
 
 import "time"

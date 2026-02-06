@@ -176,14 +176,20 @@ export async function renderChatSidebar(root) {
     const uid = Number(u.id)
     const isActive = selectedId === uid
 
+    const unread = Number(getState().unreadMessages?.[uid] || 0)
+
     const item = document.createElement('button')
+
     item.type = 'button'
     item.className = 'chat-user-row' + (isActive ? ' is-active' : '')
 
     item.innerHTML = `
       <div class="chat-user-avatar">${u.nickname ? u.nickname[0].toUpperCase() : '?'}</div>
       <div class="chat-user-info">
-        <div class="chat-user-name">${escapeHtml(u.nickname || 'Unknown')}</div>
+        <div class="chat-user-name">
+          ${escapeHtml(u.nickname)}
+          ${unread ? `<span class="chat-badge">${unread}</span>` : ''}
+        </div>
         <div class="chat-user-hint">${presenceHint(uid, u.last_seen_at)}</div>
       </div>
     `
@@ -783,7 +789,11 @@ export async function renderChatView(root, param) {
   if (selectedUserId) {
     const fallbackName = getState().chatWithUserName || null
     titleEl.textContent = fallbackName || 'Chat'
-
+    function clearUnread(otherId) {
+      const unread = { ...(getState().unreadMessages || {}) }
+      delete unread[otherId]
+      setStateKey('unreadMessages', unread)
+    }
     bindPresenceSubscription(selectedUserId) // ✅ AÑADE ESTO
     renderHeaderSubtitle()
 
@@ -792,6 +802,7 @@ export async function renderChatView(root, param) {
     input.focus()
 
     await loadInitial(selectedUserId)
+    clearUnread(selectedUserId)
   }
 
   // send message (WS)

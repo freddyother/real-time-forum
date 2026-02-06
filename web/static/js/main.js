@@ -1,6 +1,6 @@
 // web/static/js/main.js
 import { initRouter, navigateTo } from './router.js'
-import { initState, getState, onStateChange, subscribe, setPresenceSnapshot, setUserPresence } from './state.js'
+import { initState, getState, onStateChange, subscribe, setPresenceSnapshot, setUserPresence, incrementUnread } from './state.js'
 import { enableWS, disableWS, onWSMessage } from './ws-chat.js'
 import { renderNavbar } from './components/navbar.js'
 import { renderChatSidebar } from './views/view-chat.js'
@@ -43,6 +43,29 @@ function ensureGlobalWSListeners() {
       const uid = Number(ev.user_id || 0)
       if (!uid) return
       setUserPresence(uid, Boolean(ev.online), ev.last_seen_at ?? null)
+      return
+    }
+    //  Unread notifications for incoming messages
+    if (ev.type === 'message') {
+      const meId = Number(getState().currentUser?.id || 0)
+      if (!meId) return
+
+      const to = Number(ev.to_user_id || 0)
+      const from = Number(ev.from_user_id || 0)
+      if (!to || !from) return
+
+      // only for messages addressed to me
+      if (to !== meId) return
+
+      // If I'm currently in that chat, don't count as unread
+      const activeChatId = Number(getState().chatWithUserId || 0)
+      const isChatRoute = location.hash.startsWith('#chat/')
+      const isActiveChat = isChatRoute && activeChatId === from
+
+      if (!isActiveChat) {
+        incrementUnread(from, 1)
+      }
+
       return
     }
   })

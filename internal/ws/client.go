@@ -80,6 +80,10 @@ func (c *Client) readPump() {
 			if in.ToID <= 0 || in.Text == "" {
 				continue
 			}
+			// do not allow yourself to be sent by WS
+			if in.ToID == c.userID {
+				continue
+			}
 
 			ev := MessageEvent{
 				Type:       "message",
