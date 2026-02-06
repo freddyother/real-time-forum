@@ -1,3 +1,4 @@
+// Post Card Detail
 // web/static/js/views/view-post.js
 
 import { apiGetPost, apiAddComment, apiTogglePostReaction, apiRegisterPostView, apiUpdatePost, apiUpdateComment } from '../api.js'
@@ -5,11 +6,8 @@ import { navigateTo } from '../router.js'
 import { getState } from '../state.js'
 
 export async function renderPostView(root, postId) {
-  function escapeHtml(str) {
-    return String(str).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#039;')
-  }
-
-  root.innerHTML = ''
+  const escapeHtml = (str) =>
+    String(str).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#039;')
 
   const container = document.createElement('div')
   container.className = 'post-page'
@@ -29,18 +27,53 @@ export async function renderPostView(root, postId) {
   const comments = data.comments || []
 
   const me = getState().currentUser
-  const isOwner = Boolean(me && Number(me.id) === Number(post?.user_id))
+  const myId = Number(me?.id ?? me?.ID ?? 0)
+  const ownerId = Number(post?.user_id ?? post?.userID ?? post?.UserID ?? 0)
+  const isOwner = myId > 0 && ownerId > 0 && myId === ownerId
+
+  console.log('[OWNER CHECK]', {
+    me,
+    myId,
+    ownerId,
+    postUserId: post?.user_id,
+    isOwner,
+  })
 
   // Reactions
   const pid = Number(post?.id || 0) || 0
   const reactionsCount = Number(post?.reactions_count ?? post?.likes_count ?? 0) || 0
   const iReacted = Boolean(post?.i_reacted ?? post?.i_liked ?? false)
 
-  // Views (ONLY in detail)
+  // Views
   const initialViews = Number(post?.views_count ?? 0) || 0
 
   // Date formatting
   const created = post?.created_at ? new Date(post.created_at).toLocaleString() : ''
+
+  // Categories list (best-effort from feed state + defaults)
+  function getAllCategories() {
+    const defaults = [
+      'General',
+      'Tech-support',
+      'Technology',
+      'Announcements',
+      'FAQ',
+      'Fashion',
+      'Travel',
+      'Marketplace',
+      'Gaming',
+      'Introductions',
+      'Go',
+      'JavaScript',
+    ]
+    const fromFeed = (getState().posts || []).map((p) => (p?.category ? String(p.category) : '')).filter(Boolean)
+
+    const set = new Set([...defaults, ...fromFeed])
+    // si la categoría del post no está, la añadimos
+    if (post?.category) set.add(String(post.category))
+
+    return Array.from(set)
+  }
 
   container.innerHTML = `
     <div class="post-back" id="backToFeed">← Back to Feed</div>
@@ -54,16 +87,7 @@ export async function renderPostView(root, postId) {
         <div class="post-header-right">
           <span class="post-page-category" id="postCategory">${escapeHtml(post?.category || 'General')}</span>
 
-          ${
-            isOwner
-              ? `
-            <button class="post-menu-btn" id="postMenuBtn" type="button" aria-label="Post options">⋯</button>
-            <div class="post-menu" id="postMenu" style="display:none">
-              <button type="button" class="post-menu-item" id="editPostBtn">Edit</button>
-            </div>
-          `
-              : ''
-          }
+          ${isOwner ? `<button class="nav-btn" id="editPostBtn" type="button">Edit</button>` : ``}
         </div>
       </header>
 
@@ -79,7 +103,6 @@ export async function renderPostView(root, postId) {
           <button
             class="reaction-btn ${iReacted ? 'reacted' : ''}"
             type="button"
-            data-post-id="${postId || ''}"
             aria-label="React to post"
             title="Like"
           >
@@ -95,13 +118,19 @@ export async function renderPostView(root, postId) {
         </div>
       </footer>
 
-      <article class="post-page-content">
-        ${post?.content || ''}
+      <article class="post-page-content" id="postContent">
+        ${escapeHtml(post?.content || '')}
       </article>
 
       <section class="post-comments">
         <h2 class="comments-title">Comments (${comments.length})</h2>
         <div class="comments-list"></div>
+
+        <!-- ✅ barra de acciones para EDIT (siempre FUERA del form) -->
+        <div class="post-edit-actions-bar" id="postEditActionsBar" style="display:none">
+          <button type="button" class="nav-btn" id="savePostEdit">Save</button>
+          <button type="button" class="nav-btn" id="cancelPostEdit">Cancel</button>
+        </div>
 
         <form id="commentForm" class="comment-form">
           <textarea id="commentText" placeholder="Write a reply…" required></textarea>
@@ -111,7 +140,10 @@ export async function renderPostView(root, postId) {
     </div>
   `
 
-  // ✅ Register view
+  // ---- BACK ----
+  container.querySelector('#backToFeed')?.addEventListener('click', () => navigateTo('feed'))
+
+  // Register view
   if (pid) {
     try {
       const res = await apiRegisterPostView(pid)
@@ -119,82 +151,9 @@ export async function renderPostView(root, postId) {
       if (viewsEl && res && typeof res.views_count === 'number') {
         viewsEl.textContent = `👁 ${res.views_count} views`
       }
-    } catch (err) {
-      console.warn('[VIEWS] could not register view:', err)
+    } catch {
+      // ignore
     }
-  }
-
-  // ✅ EDIT POST (only owner)
-  if (isOwner) {
-    const menuBtn = container.querySelector('#postMenuBtn')
-    const menu = container.querySelector('#postMenu')
-    const editBtn = container.querySelector('#editPostBtn')
-
-    const titleEl = container.querySelector('#postTitle')
-    const contentEl = container.querySelector('.post-page-content')
-    const categoryEl = container.querySelector('#postCategory')
-
-    function closeMenu() {
-      if (menu) menu.style.display = 'none'
-    }
-
-    menuBtn?.addEventListener('click', (e) => {
-      e.stopPropagation()
-      menu.style.display = menu.style.display === 'none' ? 'block' : 'none'
-    })
-
-    document.addEventListener('click', closeMenu)
-
-    editBtn?.addEventListener('click', async () => {
-      closeMenu()
-
-      const prevTitle = post?.title || ''
-      const prevContent = post?.content || ''
-      const prevCategory = post?.category || 'General'
-
-      // ⚠️ input value needs escaping, textarea content NOT
-      titleEl.outerHTML = `<input id="postTitleInput" class="post-edit-title" value="${escapeHtml(prevTitle)}" />`
-      contentEl.outerHTML = `<textarea id="postContentInput" class="post-edit-content"></textarea>`
-      categoryEl.outerHTML = `<input id="postCategoryInput" class="post-edit-category" value="${escapeHtml(prevCategory)}" />`
-
-      container.querySelector('#postContentInput').value = prevContent
-
-      const metaRight = container.querySelector('.post-meta-right')
-      const actions = document.createElement('div')
-      actions.className = 'post-edit-actions'
-      actions.innerHTML = `
-        <button type="button" class="nav-btn" id="savePostEdit">Save</button>
-        <button type="button" class="nav-btn" id="cancelPostEdit">Cancel</button>
-      `
-      metaRight?.appendChild(actions)
-
-      const titleInput = container.querySelector('#postTitleInput')
-      const contentInput = container.querySelector('#postContentInput')
-      const categoryInput = container.querySelector('#postCategoryInput')
-
-      container.querySelector('#cancelPostEdit')?.addEventListener('click', () => {
-        navigateTo(`post/${pid}`)
-      })
-
-      container.querySelector('#savePostEdit')?.addEventListener('click', async () => {
-        const nextTitle = titleInput.value.trim()
-        const nextContent = contentInput.value.trim()
-        const nextCategory = categoryInput.value.trim()
-
-        if (!nextTitle || !nextContent) {
-          alert('Title and content are required.')
-          return
-        }
-
-        try {
-          await apiUpdatePost(pid, { title: nextTitle, content: nextContent, category: nextCategory })
-          navigateTo(`post/${pid}`)
-        } catch (err) {
-          console.error('[POST] update failed:', err)
-          alert('Could not update post. Please try again.')
-        }
-      })
-    })
   }
 
   // ---- COMMENTS ----
@@ -202,7 +161,7 @@ export async function renderPostView(root, postId) {
 
   function appendComment(c) {
     const me = getState().currentUser
-    const isMine = Boolean(me && Number(me.id) === Number(c.user_id))
+    const isMine = me && Number(me.id) === Number(c.user_id)
 
     const item = document.createElement('div')
     item.className = 'comment-item'
@@ -230,7 +189,7 @@ export async function renderPostView(root, postId) {
 
         p.outerHTML = `
           <div class="comment-edit-wrap">
-            <textarea class="comment-edit-input"></textarea>
+            <textarea class="comment-edit-input">${escapeHtml(old)}</textarea>
             <div class="comment-edit-actions">
               <button type="button" class="nav-btn comment-save">Save</button>
               <button type="button" class="nav-btn comment-cancel">Cancel</button>
@@ -240,16 +199,14 @@ export async function renderPostView(root, postId) {
 
         const wrap = item.querySelector('.comment-edit-wrap')
         const input = wrap.querySelector('.comment-edit-input')
-        input.value = old
 
-        wrap.querySelector('.comment-cancel').addEventListener('click', () => {
+        wrap.querySelector('.comment-cancel')?.addEventListener('click', () => {
           wrap.outerHTML = `<p class="comment-text">${escapeHtml(old)}</p>`
         })
 
-        wrap.querySelector('.comment-save').addEventListener('click', async () => {
+        wrap.querySelector('.comment-save')?.addEventListener('click', async () => {
           const next = input.value.trim()
           if (!next) return
-
           try {
             const res = await apiUpdateComment(Number(c.id), next)
             const updated = res?.comment
@@ -267,14 +224,10 @@ export async function renderPostView(root, postId) {
 
   comments.forEach(appendComment)
 
-  // ---- BACK ----
-  container.querySelector('#backToFeed')?.addEventListener('click', () => navigateTo('feed'))
-
   // ---- ADD COMMENT ----
   const form = container.querySelector('#commentForm')
   const textarea = container.querySelector('#commentText')
-
-  form.addEventListener('submit', async (e) => {
+  form?.addEventListener('submit', async (e) => {
     e.preventDefault()
     const content = textarea.value.trim()
     if (!content) return
@@ -283,7 +236,6 @@ export async function renderPostView(root, postId) {
       const { comment } = await apiAddComment(post.id, content)
       appendComment(comment)
       textarea.value = ''
-
       const titleEl = container.querySelector('.comments-title')
       titleEl.textContent = `Comments (${listEl.children.length})`
     } catch (err) {
@@ -298,7 +250,6 @@ export async function renderPostView(root, postId) {
     reactionBtn.addEventListener('click', async (e) => {
       e.preventDefault()
       e.stopPropagation()
-
       if (!pid) return
 
       const countEl = reactionBtn.querySelector('.reaction-count')
@@ -308,21 +259,13 @@ export async function renderPostView(root, postId) {
       const wasOn = reactionBtn.classList.contains('reacted')
 
       reactionBtn.disabled = true
-      if (wasOn) {
-        reactionBtn.classList.remove('reacted')
-        if (textEl) textEl.textContent = 'Like'
-        if (countEl) countEl.textContent = String(Math.max(0, currentCount - 1))
-      } else {
-        reactionBtn.classList.add('reacted')
-        if (textEl) textEl.textContent = 'Liked'
-        if (countEl) countEl.textContent = String(currentCount + 1)
-      }
+      reactionBtn.classList.toggle('reacted', !wasOn)
+      if (textEl) textEl.textContent = wasOn ? 'Like' : 'Liked'
+      if (countEl) countEl.textContent = String(wasOn ? Math.max(0, currentCount - 1) : currentCount + 1)
 
       try {
         const res = await apiTogglePostReaction(pid, 'like')
-        if (res && typeof res.reactions_count === 'number' && countEl) {
-          countEl.textContent = String(res.reactions_count)
-        }
+        if (res && typeof res.reactions_count === 'number' && countEl) countEl.textContent = String(res.reactions_count)
         if (res && typeof res.reacted === 'boolean') {
           reactionBtn.classList.toggle('reacted', res.reacted)
           if (textEl) textEl.textContent = res.reacted ? 'Liked' : 'Like'
@@ -336,6 +279,128 @@ export async function renderPostView(root, postId) {
       } finally {
         reactionBtn.disabled = false
       }
+    })
+  }
+
+  // ─────────────────────────────
+  //  EDIT POST MODE
+  // ─────────────────────────────
+  const editBtn = container.querySelector('#editPostBtn')
+  if (isOwner && editBtn) {
+    editBtn.addEventListener('click', () => {
+      // activar modo edición
+      container.classList.add('is-editing-post')
+
+      // ocultar SOLO el form de comentar (los comentarios quedan)
+      const commentForm = container.querySelector('#commentForm')
+      if (commentForm) commentForm.style.display = 'none'
+
+      // mostrar barra Save/Cancel
+      const actionsBar = container.querySelector('#postEditActionsBar')
+      actionsBar.style.display = 'flex'
+
+      // transformar title/content en inputs
+      const titleEl = container.querySelector('#postTitle')
+      const contentEl = container.querySelector('#postContent')
+      const catEl = container.querySelector('#postCategory')
+
+      const prevTitle = post?.title || ''
+      const prevContent = post?.content || ''
+      const prevCategory = post?.category || 'General'
+
+      titleEl.outerHTML = `<input id="postTitleInput" class="post-edit-title" value="${escapeHtml(prevTitle)}" />`
+
+      // ✅ reemplazamos el chip de categoría por una barra de chips (arriba del contenido)
+      catEl.outerHTML = `<span class="post-page-category" id="postCategoryPreview">${escapeHtml(prevCategory)}</span>`
+
+      // insertamos catbar justo después del meta
+      const meta = container.querySelector('.post-page-meta')
+      const catbar = document.createElement('div')
+      catbar.className = 'post-edit-catbar'
+      catbar.innerHTML = `
+        <div class="post-edit-catlabel">Category</div>
+        <div class="post-edit-cats" id="postEditCats"></div>
+        <input id="postCategoryInput" class="post-edit-cat-new" placeholder="Or type a new category and press Enter" value="" />
+      `
+      meta?.insertAdjacentElement('afterend', catbar)
+
+      // content textarea
+      contentEl.outerHTML = `<textarea id="postContentInput" class="post-edit-content">${escapeHtml(prevContent)}</textarea>`
+
+      // chips
+      const catsEl = container.querySelector('#postEditCats')
+      const categoryInput = container.querySelector('#postCategoryInput')
+      let selectedCategory = prevCategory
+
+      function renderChips() {
+        const all = getAllCategories()
+        catsEl.innerHTML = all
+          .map((c) => {
+            const active = String(c) === String(selectedCategory) ? 'active' : ''
+            return `<button type="button" class="cat-chip ${active}" data-cat="${escapeHtml(c)}">${escapeHtml(c)}</button>`
+          })
+          .join('')
+      }
+
+      renderChips()
+
+      catsEl.addEventListener('click', (e) => {
+        const btn = e.target.closest('button[data-cat]')
+        if (!btn) return
+        selectedCategory = btn.getAttribute('data-cat')
+        // preview arriba a la derecha
+        const preview = container.querySelector('#postCategoryPreview')
+        if (preview) preview.textContent = selectedCategory
+        renderChips()
+      })
+
+      // allow custom category with Enter
+      categoryInput.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter') return
+        e.preventDefault()
+        const v = categoryInput.value.trim()
+        if (!v) return
+        selectedCategory = v
+        categoryInput.value = ''
+        const preview = container.querySelector('#postCategoryPreview')
+        if (preview) preview.textContent = selectedCategory
+        renderChips()
+      })
+
+      // cancel -> re-render detail
+      container.querySelector('#cancelPostEdit')?.addEventListener('click', () => {
+        location.hash = '#_'
+        setTimeout(() => {
+          navigateTo(`post/${pid}`)
+        }, 0)
+      })
+
+      // save -> PATCH -> back to detail
+      container.querySelector('#savePostEdit')?.addEventListener('click', async () => {
+        const titleInput = container.querySelector('#postTitleInput')
+        const contentInput = container.querySelector('#postContentInput')
+
+        const nextTitle = titleInput.value.trim()
+        const nextContent = contentInput.value.trim()
+        const nextCategory = (selectedCategory || 'General').trim()
+
+        if (!nextTitle || !nextContent) {
+          alert('Title and content are required.')
+          return
+        }
+
+        try {
+          await apiUpdatePost(pid, { title: nextTitle, content: nextContent, category: nextCategory })
+          location.hash = '#_'
+          setTimeout(() => {
+            navigateTo(`post/${pid}`)
+          }, 0)
+          //  return to detail
+        } catch (err) {
+          console.error('[POST] update failed:', err)
+          alert('Could not update post. Please try again.')
+        }
+      })
     })
   }
 }
