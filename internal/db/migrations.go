@@ -157,7 +157,7 @@ func RunMigrations(db *sql.DB) error {
 	}
 
 	// Users: last read timestamp (for sidebar/notifications)
-	if err := execIgnoreDuplicateColumn(db, `ALTER TABLE users ADD COLUMN last_read_at DATETIME;`); err != nil {
+	if err := execIgnoreDuplicateColumn(db, `ALTER TABLE users ADD COLUMN last_seen_at DATETIME;`); err != nil {
 		return err
 	}
 
