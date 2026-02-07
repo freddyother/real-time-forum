@@ -1,4 +1,29 @@
-## Real-time-forum
+# Real-Time Forum
+
+A modern real-time forum application built with **Go**, **SQLite**, and **vanilla JavaScript**, featuring live private messaging, presence indicators, and a clean single-page interface.
+
+## Features
+
+- 🔐 User authentication (sessions & cookies)
+- 📝 Create, edit and browse posts with categories
+- 💬 Real-time private chat (WebSockets)
+- 👀 Online / offline presence + last seen
+- 📩 Message delivery & seen status
+- 🔔 Unread message badges
+- 💬 Typing indicators
+- ⚡ Single-page app (no page reloads)
+- 📱 Responsive UI
+
+## Tech Stack
+
+- **Backend:** Go (net/http)
+- **Database:** SQLite
+- **Realtime:** WebSockets (gorilla/websocket)
+- **Frontend:** HTML, CSS, Vanilla JavaScript
+- **State management:** Client-side store
+- **Sessions:** HTTP cookies
+
+## Project Structure
 
 ```text
 
@@ -61,3 +86,34 @@ real-time-forum/
 ├─ go.sum
 └─ README.md
 ```
+
+## Running Locally
+
+### Prerequisites
+
+- Go 1.21+
+- SQLite
+
+### Start the server
+
+```bash
+go run ./cmd/server
+```
+
+go -> http://localhost:8080
+
+## Environment Variables
+
+| Variable | Description                      |
+| -------- | -------------------------------- |
+| `PORT`   | HTTP server port (default: 8080) |
+
+## Notes
+
+- SQLite is used for simplicity and local persistence.
+- WebSockets are used for real-time messaging and presence updates.
+- The application is designed as a lightweight SPA without external frameworks.
+
+## License
+
+MIT

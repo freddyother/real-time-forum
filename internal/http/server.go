@@ -10,6 +10,8 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -613,7 +615,47 @@ func (s *Server) handleCommentByID(w http.ResponseWriter, r *http.Request) {
 func (s *Server) Router() http.Handler {
 	mux := http.NewServeMux()
 
-	mux.Handle("/", http.FileServer(http.Dir("./web")))
+	//  DEBUG:  see where the server is running from
+	if wd, err := os.Getwd(); err == nil {
+		log.Println("[WD]", wd)
+	}
+
+	// Find the path of the executable and from there locate /web
+	exe, err := os.Executable()
+	if err != nil {
+		log.Println("[STATIC] os.Executable error:", err)
+		// fallback
+		mux.Handle("/", http.FileServer(http.Dir("./web")))
+	} else {
+		exeDir := filepath.Dir(exe)
+
+		// If you run “go run,” the exe may be in /tmp,
+		// but in compiled binary it will be near the project.
+		candidates := []string{
+			filepath.Join(exeDir, "web"),
+			filepath.Join(exeDir, "..", "web"),
+			filepath.Join(exeDir, "..", "..", "web"),
+			"web", // fallback relativo desde wd
+		}
+
+		var webDir string
+		for _, c := range candidates {
+			if st, err := os.Stat(c); err == nil && st.IsDir() {
+				webDir = c
+				break
+			}
+		}
+
+		if webDir == "" {
+			log.Println("[STATIC] web dir NOT found, fallback ./web")
+			webDir = "./web"
+		}
+
+		webDir = filepath.Clean(webDir)
+		log.Println("[STATIC] serving from:", webDir)
+
+		mux.Handle("/", http.FileServer(http.Dir(webDir)))
+	}
 
 	mux.HandleFunc("/api/register", s.handleRegister)
 	mux.HandleFunc("/api/login", s.handleLogin)
@@ -621,11 +663,9 @@ func (s *Server) Router() http.Handler {
 
 	mux.HandleFunc("/api/posts", s.handlePosts)
 	mux.HandleFunc("/api/posts/", s.handlePostDetail)
-
 	mux.HandleFunc("/api/comments/", s.handleCommentByID)
 
 	mux.HandleFunc("/ws/chat", s.handleChatWS)
-
 	mux.HandleFunc("/api/messages/", s.handleMessages)
 	mux.HandleFunc("/api/users", s.handleUsers)
 

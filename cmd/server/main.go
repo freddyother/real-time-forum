@@ -36,10 +36,14 @@ func main() {
 	// Create the HTTP server with all dependencies.
 	server := httpserver.NewServer(db, hub)
 
-	log.Println("listening on :8080")
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+	log.Printf("listening on :%s\n", port)
 
 	// Start the server and block until failure.
-	if err := http.ListenAndServe(":8080", server.Router()); err != nil {
+	if err := http.ListenAndServe(":"+port, server.Router()); err != nil {
 		log.Fatal(err)
 	}
 }
