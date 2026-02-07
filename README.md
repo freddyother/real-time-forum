@@ -61,26 +61,26 @@ real-time-forum/
 │  │  ├─ css/
 │  │  │  └─ style.css
 │  │  └─ js/
-│  │     ├─ main.js         # punto de entrada
-│  │     ├─ router.js       # cambio de "vistas" dentro de la SPA
-│  │     ├─ state.js        # estado global (usuario, posts, chat)
-│  │     ├─ api.js          # fetch() a backend REST (login, posts...)
-│  │     ├─ websocket.js    # conexión WS y eventos
+│  │     ├─ main.js         # entry point
+│  │     ├─ router.js       # change of “views” within the SPA
+│  │     ├─ state.js        # global status (user, posts, chat)
+│  │     ├─ api.js          # fetch() to backend REST (login, posts...)
+│  │     ├─ notifications.js    # user sidebar badge and notifications
 │  │     ├─ views/
 │  │     │  ├─ view-auth.js     # login / register
-│  │     │  ├─ view-feed.js     # feed de posts
-│  │     │  ├─ view-post.js     # detalle de post + comentarios
-│  │     │  └─ view-chat.js     # chat privado + lista de usuarios
+│  │     │  ├─ view-feed.js     # post feed
+│  │     │  ├─ view-post.js     # post details + comments
+│  │     │  └─ view-chat.js     # private chat + user list
 │  │     ├─ components/
-│  │     │  ├─ navbar.js        # barra superior (logout, avatar…)
-│  │     │  ├─ post-card.js     # tarjeta de post para el feed
-│  │     │  ├─ comment-list.js  # lista de comentarios
-│  │     │  └─ chat-message.js  # burbuja de mensaje
+│  │     │  ├─ navbar.js        # top bar (logout, avatar, etc.)
+│  │     │  ├─ post-card.js     # postcard feed
+│  │     │  ├─ comment-list.js  # list of comments
+│  │     │  └─ chat-message.js  # message bubble
 │  │     └─ utils/
-│  │        ├─ dom.js           # helpers para crear/actualizar nodos
-│  │        └─ throttle.js      # throttle/debounce para scroll del chat
+│  │        ├─ dom.js           # helpers for creating/updating nodes
+│  │        └─ throttle.js      # throttle/debounce for chat scrolling
 │  │
-│  └─ assets/   # (opcional: imágenes, logos, etc.)
+│  └─ assets/   # (optional: images, logos, etc.)
 │
 ├─ go.mod
 ├─ go.sum
