@@ -46,6 +46,7 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case http.MethodGet:
+
 		limit := 10
 		if v := r.URL.Query().Get("limit"); v != "" {
 			if n, err := strconv.Atoi(v); err == nil {
@@ -65,6 +66,7 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 				beforeID = n
 			}
 		}
+		log.Printf("[MESSAGES] GET other=%d limit=%d before=%d user=%d", otherID, limit, beforeID, userID)
 
 		// Cursor pagination: model returns only "limit" messages + hasMore/nextBefore
 		msgs, hasMore, nextBefore, err := s.messages.ListBetweenBefore(r.Context(), userID, otherID, limit, beforeID)

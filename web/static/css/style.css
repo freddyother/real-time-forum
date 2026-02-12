@@ -1091,6 +1091,7 @@ a:hover {
   width: 100%;
   padding: 28px 24px;
   box-sizing: border-box;
+  height: calc(100vh - 64px); /* FIX: page has a bounded height */
 }
 
 .chat-card {
@@ -1102,6 +1103,11 @@ a:hover {
   backdrop-filter: blur(14px);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.06);
   overflow: hidden;
+
+  display: flex; /* FIX */
+  flex-direction: column; /* FIX */
+  height: 100%; /* FIX */
+  min-height: 0; /* FIX */
 }
 
 /* header */
@@ -1125,8 +1131,8 @@ a:hover {
 
 /* messages area */
 .chat-messages {
-  height: calc(100vh - 64px - 230px); /* navbar + header + composer aprox */
-  min-height: 280px;
+  flex: 1 1 auto; /* FIX: takes remaining space */
+  min-height: 0; /* FIX: allow internal scroll in flex */
   padding: 18px 16px;
   overflow-y: auto;
   background: rgba(255, 255, 255, 0.25);

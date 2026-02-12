@@ -251,10 +251,11 @@ export async function renderChatView(root, param) {
 
   let selectedUserId = Number(getState().chatWithUserId) || null
 
-  const PAGE_SIZE = 30
-  let offset = 0
+  const PAGE_SIZE = 10
+  let nextBefore = 0
   let hasMore = true
   let loadingMore = false
+  let readyForScrollLoad = false // Block scroll-triggered pagination until initial load finishes
 
   let allMessages = []
   let lastSendNonce = 0
@@ -518,72 +519,157 @@ export async function renderChatView(root, param) {
   })
 
   // ---------------------------
-  // Pagination
+  // Pagination (cursor-based)
   // ---------------------------
-  async function fetchPage(otherId, pageOffset) {
-    const data = await apiGetMessages(otherId, pageOffset, PAGE_SIZE)
-    const messages = Array.isArray(data.messages) ? data.messages : []
-    return messages.map(normalizeMessage)
+  async function fetchPage(otherId, beforeID) {
+    // Request last PAGE_SIZE messages when beforeID=0,
+    // or older messages when beforeID>0.
+
+    console.log('[CHAT] fetchPage before=', beforeID, 'pageSize=', PAGE_SIZE)
+
+    const data = await apiGetMessages(otherId, beforeID, PAGE_SIZE)
+    const messages = Array.isArray(data?.messages) ? data.messages : []
+
+    const page = messages.map(normalizeMessage)
+
+    return {
+      page,
+      hasMore: Boolean(data?.has_more),
+      nextBefore: Number(data?.next_before || 0),
+    }
   }
 
   async function loadInitial(otherId) {
-    offset = 0
+    readyForScrollLoad = false
+
+    nextBefore = 0
     hasMore = true
     allMessages = []
     msgsEl.innerHTML = `<div class="chat-empty">Loading…</div>`
 
-    const page = await fetchPage(otherId, offset)
+    const { page, hasMore: hm, nextBefore: nb } = await fetchPage(otherId, 0)
+
     allMessages = page
-    hasMore = page.length === PAGE_SIZE
+    hasMore = hm
+    nextBefore = nb
 
     renderMessages(allMessages, { preserveScroll: false })
     scrollToBottom(msgsEl)
 
+    // ✅ CLAVE: si no hay overflow, cargar más hasta que lo haya
+    await fillUntilScrollable(otherId)
+
+    readyForScrollLoad = true
     scheduleSeen(otherId, 'open-chat')
   }
 
   async function loadMoreTop(otherId) {
-    if (!hasMore || loadingMore) return
+    if (!readyForScrollLoad) return
+    if (loadingMore) return
+    if (!hasMore) return
+
+    // ✅ guard: si no hay cursor, no hay nada más
+    if (!nextBefore) {
+      hasMore = false
+      return
+    }
+
     loadingMore = true
 
     const prevScrollHeight = msgsEl.scrollHeight
     const prevScrollTop = msgsEl.scrollTop
 
-    offset += PAGE_SIZE
-
-    let page = []
     try {
-      page = await fetchPage(otherId, offset)
+      const res = await fetchPage(otherId, nextBefore)
+      const page = res.page
+
+      if (!page.length) {
+        hasMore = false
+        return
+      }
+
+      allMessages = [...page, ...allMessages]
+      hasMore = res.hasMore
+      nextBefore = res.nextBefore
+
+      renderMessages(allMessages, { preserveScroll: true })
+
+      const newScrollHeight = msgsEl.scrollHeight
+      msgsEl.scrollTop = prevScrollTop + (newScrollHeight - prevScrollHeight)
     } catch (err) {
       console.error('loadMoreTop failed:', err)
+    } finally {
       loadingMore = false
-      return
     }
-
-    if (!page.length) {
-      hasMore = false
-      loadingMore = false
-      return
-    }
-
-    allMessages = [...page, ...allMessages]
-    hasMore = page.length === PAGE_SIZE
-
-    renderMessages(allMessages, { preserveScroll: true })
-
-    const newScrollHeight = msgsEl.scrollHeight
-    msgsEl.scrollTop = prevScrollTop + (newScrollHeight - prevScrollHeight)
-
-    loadingMore = false
   }
 
-  msgsEl.addEventListener('scroll', () => {
+  async function fillUntilScrollable(otherId) {
+    // Si el contenedor ya tiene overflow, no hacemos nada
+    // Si no lo tiene, pedimos más páginas hasta que lo tenga.
+    const MAX_PAGES = 10 // evita loops si algo raro pasa
+    let n = 0
+
+    while (n < MAX_PAGES && hasMore && nextBefore && msgsEl.scrollHeight <= msgsEl.clientHeight + 5) {
+      n++
+
+      const res = await fetchPage(otherId, nextBefore)
+      const page = res.page
+
+      if (!page.length) {
+        hasMore = false
+        break
+      }
+
+      allMessages = [...page, ...allMessages]
+      hasMore = res.hasMore
+      nextBefore = res.nextBefore
+
+      // Estamos “rellenando”, queremos seguir anclados abajo
+      renderMessages(allMessages, { preserveScroll: false })
+      scrollToBottom(msgsEl)
+    }
+  }
+
+  // Throttle helper to avoid spamming scroll-triggered requests.
+  function throttle(fn, wait = 200) {
+    let last = 0
+    let timer = null
+
+    return (...args) => {
+      const now = Date.now()
+      const remaining = wait - (now - last)
+
+      if (remaining <= 0) {
+        last = now
+        fn(...args)
+        return
+      }
+
+      if (timer) return
+      timer = setTimeout(() => {
+        timer = null
+        last = Date.now()
+        fn(...args)
+      }, remaining)
+    }
+  }
+  //  -------------------------
+  //  handler Scroll
+  //-----------------------------
+  const onScrollThrottled = throttle(() => {
     const currentId = Number(getState().chatWithUserId) || null
     if (!currentId) return
+    if (!readyForScrollLoad) return
+
+    // ✅ si no hay overflow, no hay “scroll real”
+    if (msgsEl.scrollHeight <= msgsEl.clientHeight + 5) return
 
     if (msgsEl.scrollTop < 40) loadMoreTop(currentId)
+
     if (isNearBottom(msgsEl, 80)) scheduleSeen(currentId, 'scroll-bottom')
-  })
+  }, 200)
+
+  msgsEl.addEventListener('scroll', onScrollThrottled)
 
   // ---------------------------
   // Render

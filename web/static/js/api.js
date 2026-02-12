@@ -43,11 +43,11 @@ async function request(path, options = {}) {
         'Content-Type': 'application/json',
         ...(options.headers || {}),
       },
-      signal: options.signal, // ✅ correct place (NOT inside headers)
+      signal: options.signal, //  correct place (NOT inside headers)
       ...options,
     })
   } catch (err) {
-    // ✅ AbortController: ignore silently (expected during logout / rerenders)
+    // AbortController: ignore silently (expected during logout / rerenders)
     if (err && (err.name === 'AbortError' || err.code === 20)) {
       return null
     }
