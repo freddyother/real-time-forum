@@ -13,34 +13,46 @@ type MessageModel struct {
 	DB *sql.DB
 }
 
-// ListBetween returns messages between userID and otherUserID ordered oldest->newest.
-// Supports pagination via offset/limit (offset is from the newest side using the inner ORDER BY DESC).
-func (m *MessageModel) ListBetween(ctx context.Context, userID, otherUserID int64, limit, offset int) ([]Message, error) {
-	if limit <= 0 || limit > 100 {
-		limit = 20
+// ListBetweenBefore returns messages between userID and otherUserID.
+// If beforeID == 0: returns the latest "limit" messages.
+// If beforeID  > 0: returns messages with id < beforeID (older history).
+// Result is ordered oldest->newest.
+// It also returns hasMore and nextBefore (the oldest message id in this batch).
+func (m *MessageModel) ListBetweenBefore(ctx context.Context, userID, otherUserID int64, limit int, beforeID int64) ([]Message, bool, int64, error) {
+	if limit <= 0 || limit > 50 {
+		limit = 10
 	}
-	if offset < 0 {
-		offset = 0
+	if beforeID < 0 {
+		beforeID = 0
 	}
 
+	// Fetch newest first so pagination is stable; reverse before returning.
 	const q = `
 SELECT id, from_user_id, to_user_id, content, sent_at,
        delivered, delivered_at,
        seen, seen_at
 FROM messages
-WHERE (from_user_id = ? AND to_user_id = ?)
-   OR (from_user_id = ? AND to_user_id = ?)
-ORDER BY sent_at DESC, id DESC
-LIMIT ? OFFSET ?;
+WHERE (
+        (from_user_id = ? AND to_user_id = ?)
+     OR (from_user_id = ? AND to_user_id = ?)
+)
+  AND (? = 0 OR id < ?)
+ORDER BY id DESC
+LIMIT ?;
 `
 
-	rows, err := m.DB.QueryContext(ctx, q, userID, otherUserID, otherUserID, userID, limit, offset)
+	rows, err := m.DB.QueryContext(ctx, q,
+		userID, otherUserID,
+		otherUserID, userID,
+		beforeID, beforeID,
+		limit+1, // +1 to detect hasMore
+	)
 	if err != nil {
-		return nil, err
+		return nil, false, 0, err
 	}
 	defer rows.Close()
 
-	var tmp []Message
+	tmp := make([]Message, 0, limit+1)
 
 	for rows.Next() {
 		var msg Message
@@ -61,7 +73,7 @@ LIMIT ? OFFSET ?;
 			&seenInt,
 			&seenAt,
 		); err != nil {
-			return nil, err
+			return nil, false, 0, err
 		}
 
 		msg.Delivered = deliveredInt == 1
@@ -80,15 +92,26 @@ LIMIT ? OFFSET ?;
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return nil, false, 0, err
 	}
 
-	// reverse to oldest->newest
+	hasMore := len(tmp) > limit
+	if hasMore {
+		tmp = tmp[:limit]
+	}
+
+	// Reverse to oldest->newest
 	for i, j := 0, len(tmp)-1; i < j; i, j = i+1, j-1 {
 		tmp[i], tmp[j] = tmp[j], tmp[i]
 	}
 
-	return tmp, nil
+	var nextBefore int64 = 0
+	if len(tmp) > 0 {
+		// oldest message id in the returned batch
+		nextBefore = tmp[0].ID
+	}
+
+	return tmp, hasMore, nextBefore, nil
 }
 
 func (m *MessageModel) Create(ctx context.Context, fromUserID, toUserID int64, content string) (*Message, error) {

@@ -173,10 +173,20 @@ export function apiGetChatHistory(userId, offset, limit = 10) {
   return request(`/chat/${userId}?offset=${offset}&limit=${limit}`)
 }
 
-// GET /api/messages/{otherUserId}?offset=0&limit=20
-export async function apiGetMessages(otherUserId, offset = 0, limit = 20, signal = null) {
-  const data = await request(`/messages/${otherUserId}?offset=${offset}&limit=${limit}`, { signal })
-  return data || { messages: [] }
+// GET /api/messages/{otherUserId}?limit=10&before=123
+// Returns: { messages: [], has_more: boolean, next_before: number }
+export async function apiGetMessages(otherUserId, before = 0, limit = 10, signal = null) {
+  const qs = new URLSearchParams()
+  qs.set('limit', String(limit))
+  if (before && Number(before) > 0) qs.set('before', String(before))
+
+  const url = `/messages/${otherUserId}?${qs.toString()}`
+  console.log('[CHAT] apiGetMessages URL:', url) // <-- LOG 1
+
+  const data = await request(url, { signal })
+  console.log('[CHAT] apiGetMessages resp keys:', Object.keys(data || {}), 'len=', (data?.messages || []).length) // <-- LOG 1b
+
+  return data || { messages: [], has_more: false, next_before: 0 }
 }
 
 // POST /api/messages/{otherUserId} { content: "..." }

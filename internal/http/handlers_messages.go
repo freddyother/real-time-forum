@@ -46,21 +46,28 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case http.MethodGet:
-		limit := 20
-		offset := 0
-
+		limit := 10
 		if v := r.URL.Query().Get("limit"); v != "" {
 			if n, err := strconv.Atoi(v); err == nil {
 				limit = n
 			}
 		}
-		if v := r.URL.Query().Get("offset"); v != "" {
-			if n, err := strconv.Atoi(v); err == nil {
-				offset = n
+		if limit < 1 {
+			limit = 1
+		}
+		if limit > 50 {
+			limit = 50
+		}
+
+		var beforeID int64 = 0
+		if v := r.URL.Query().Get("before"); v != "" {
+			if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 {
+				beforeID = n
 			}
 		}
 
-		msgs, err := s.messages.ListBetween(r.Context(), userID, otherID, limit, offset)
+		// Cursor pagination: model returns only "limit" messages + hasMore/nextBefore
+		msgs, hasMore, nextBefore, err := s.messages.ListBetweenBefore(r.Context(), userID, otherID, limit, beforeID)
 		if err != nil {
 			log.Println("[MESSAGES] list error:", err)
 			http.Error(w, "cannot load messages", http.StatusInternalServerError)
@@ -68,7 +75,9 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		}
 
 		writeJSON(w, http.StatusOK, map[string]any{
-			"messages": msgs,
+			"messages":    msgs,
+			"has_more":    hasMore,
+			"next_before": nextBefore,
 		})
 
 	case http.MethodPost:
