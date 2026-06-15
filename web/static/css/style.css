@@ -9,8 +9,8 @@
   --bg-bubble-2: transparent;
   --bg-bubble-3: transparent;
 
-  --text-dark: #eef4f8;
-  --text-light: #a5b3bf;
+  --text-dark: #ffffff;
+  --text-light: #d0dbe5;
 
   --purple: #35b6ff;
   --purple-light: #5bdaf3;
@@ -1742,6 +1742,8 @@ body {
     radial-gradient(circle at 48% -18%, rgba(31, 93, 101, 0.58) 0, rgba(18, 48, 54, 0.36) 24%, rgba(3, 8, 12, 0) 54%),
     linear-gradient(180deg, #061016 0%, #03080c 72%, #020609 100%);
   color: var(--text-dark);
+  font-weight: 500;
+  text-rendering: optimizeLegibility;
 }
 
 ::selection {
@@ -1793,6 +1795,7 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: var(--surface-2);
   color: var(--text-dark);
+  font-weight: 700;
   box-shadow: none;
 }
 
@@ -1842,13 +1845,14 @@ textarea,
   background: #243247;
   border: 1px solid #3a5068;
   color: var(--text-dark);
+  font-weight: 600;
   box-shadow: none;
   backdrop-filter: none;
 }
 
 input::placeholder,
 textarea::placeholder {
-  color: #a0adbb;
+  color: #c1ccd7;
 }
 
 input:focus,
@@ -1888,13 +1892,15 @@ textarea:focus,
 .chat-title,
 .chat-side-title,
 .comment-author {
-  color: #eef1f3;
+  color: #ffffff;
+  font-weight: 800;
 }
 
 .post-title,
 .post-page-title,
 .chat-side-title {
-  color: #dff8ff;
+  color: #ffffff;
+  font-weight: 800;
 }
 
 .form-subtitle,
@@ -1915,11 +1921,13 @@ textarea:focus,
 p,
 small {
   color: var(--text-light);
+  font-weight: 500;
 }
 
 .form-footer a,
 .auth-switch a {
   color: #6fdcff;
+  font-weight: 800;
 }
 
 .feed-list {
@@ -2047,6 +2055,7 @@ small {
 
 .chat-text {
   color: var(--text-dark);
+  font-weight: 600;
 }
 
 .chat-date-sep span {
