@@ -1,7 +1,8 @@
 // web/static/js/main.js
 import { initRouter, navigateTo } from './router.js'
-import { initState, getState, onStateChange, subscribe, setPresenceSnapshot, setUserPresence, incrementUnread } from './state.js'
+import { initState, getState, onStateChange, subscribe, setStateKey, setPresenceSnapshot, setUserPresence, incrementUnread } from './state.js'
 import { enableWS, disableWS, onWSMessage } from './ws-chat.js'
+import { apiGetCurrentUser } from './api.js'
 import { renderNavbar } from './components/navbar.js'
 import { renderChatSidebar } from './views/view-chat.js'
 
@@ -101,8 +102,15 @@ function rerenderChrome() {
   }
 }
 
-function bootstrap() {
+async function bootstrap() {
   initState()
+
+  try {
+    const session = await apiGetCurrentUser()
+    if (session?.user) setStateKey('currentUser', session.user)
+  } catch (err) {
+    console.warn('[SESSION] Could not restore the current session:', err)
+  }
 
   // Re-render once immediately (important for hard refresh / first paint)
   rerenderChrome()

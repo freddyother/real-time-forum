@@ -4,6 +4,7 @@ package ws
 import (
 	"context"
 	"log"
+	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -15,6 +16,14 @@ type Client struct {
 	conn   *websocket.Conn
 	send   chan any // send any WS event (MessageEvent, DeliveredEvent, SeenEvent, TypingEvent, ...)
 	userID int64
+
+	unregisterOnce sync.Once
+}
+
+func (c *Client) requestUnregister() {
+	c.unregisterOnce.Do(func() {
+		c.hub.unregister <- c
+	})
 }
 
 // incomingMessage is what the frontend sends to the server via WS.
@@ -48,7 +57,7 @@ type TypingEvent struct {
 func (c *Client) readPump() {
 	defer func() {
 		// Unregister and close connection on exit.
-		c.hub.unregister <- c
+		c.requestUnregister()
 		_ = c.conn.Close()
 	}()
 

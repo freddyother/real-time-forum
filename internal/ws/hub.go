@@ -126,17 +126,25 @@ func (h *Hub) Run() {
 		case c := <-h.unregister:
 			// Remove a disconnected client and close its channel.
 			h.mu.Lock()
+			removed := false
 			if set, ok := h.clientsByUser[c.userID]; ok {
-				delete(set, c)
-				if len(set) == 0 {
-					delete(h.clientsByUser, c.userID)
+				if _, exists := set[c]; exists {
+					delete(set, c)
+					removed = true
+					if len(set) == 0 {
+						delete(h.clientsByUser, c.userID)
+					}
 				}
 			}
-			if h.onlineCount[c.userID] > 0 {
+			if removed && h.onlineCount[c.userID] > 0 {
 				h.onlineCount[c.userID]--
 			}
-			becameOffline := h.onlineCount[c.userID] == 0
+			becameOffline := removed && h.onlineCount[c.userID] == 0
 			h.mu.Unlock()
+
+			if !removed {
+				continue
+			}
 
 			if becameOffline {
 				lastSeen := ""
@@ -170,8 +178,9 @@ func (h *Hub) Run() {
 // internal/ws/hub.go (solo cambio en sendToUser)
 func (h *Hub) sendToUser(userID int64, payload any) {
 	h.mu.RLock()
+	defer h.mu.RUnlock()
+
 	set := h.clientsByUser[userID]
-	h.mu.RUnlock()
 	if set == nil {
 		return
 	}
@@ -180,10 +189,8 @@ func (h *Hub) sendToUser(userID int64, payload any) {
 		select {
 		case c.send <- payload:
 		default:
-			// DO NOT BLOCK the hub.Run
-			go func(cl *Client) {
-				h.unregister <- cl
-			}(c)
+			// Do not block the hub on a client that is no longer consuming.
+			go c.requestUnregister()
 		}
 	}
 }
@@ -198,7 +205,7 @@ func (h *Hub) broadcastToAll(payload any) {
 			select {
 			case c.send <- payload:
 			default:
-				// if it gets blocked, we ignore it here (your sendToUser already cleans up better; optional)
+				go c.requestUnregister()
 			}
 		}
 	}

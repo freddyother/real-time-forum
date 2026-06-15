@@ -106,6 +106,7 @@ func RunMigrations(db *sql.DB) error {
 			id TEXT PRIMARY KEY,
 			user_id INTEGER NOT NULL,
 			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			expires_at DATETIME NOT NULL,
 			FOREIGN KEY (user_id) REFERENCES users(id)
 		);`,
 
@@ -158,6 +159,20 @@ func RunMigrations(db *sql.DB) error {
 
 	// Users: last seen timestamp (for sidebar/notifications)
 	if err := execIgnoreDuplicateColumn(db, `ALTER TABLE users ADD COLUMN last_seen_at DATETIME;`); err != nil {
+		return err
+	}
+
+	// Sessions created before expiration was introduced remain valid for 30 days.
+	if err := execIgnoreDuplicateColumn(db, `ALTER TABLE sessions ADD COLUMN expires_at DATETIME;`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`UPDATE sessions SET expires_at = datetime('now', '+30 days') WHERE expires_at IS NULL;`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`DELETE FROM sessions WHERE expires_at <= CURRENT_TIMESTAMP;`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at);`); err != nil {
 		return err
 	}
 

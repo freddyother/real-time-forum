@@ -33,6 +33,7 @@ function renderLogin(container) {
         <input
           type="text"
           id="identifier"
+          autocomplete="username"
           placeholder="your@email.com or nickname"
           required
         >
@@ -43,6 +44,7 @@ function renderLogin(container) {
         <input
           type="password"
           id="password"
+          autocomplete="current-password"
           placeholder="••••••••"
           required
         >
@@ -88,19 +90,19 @@ function renderRegister(container) {
    
     <form id="registerForm" class="auth-form">
 
-        <input type="text" id="nickname" placeholder="Nickname" required>
+        <input type="text" id="nickname" autocomplete="username" placeholder="Nickname" required>
 
         <input type="number" id="age" placeholder="Age +18" required>
 
-        <input type="text" id="gender" placeholder="Gender" required>
+        <input type="text" id="gender" autocomplete="sex" placeholder="Gender" required>
 
-        <input type="text" id="first" placeholder="First name" required>
+        <input type="text" id="first" autocomplete="given-name" placeholder="First name" required>
 
-        <input type="text" id="last" placeholder="Last name" required>
+        <input type="text" id="last" autocomplete="family-name" placeholder="Last name" required>
 
-        <input type="email" id="email" placeholder="Email" required>
+        <input type="email" id="email" autocomplete="email" placeholder="Email" required>
 
-        <input type="password" id="password" placeholder="Password" maxlength="15" required>
+        <input type="password" id="password" autocomplete="new-password" placeholder="Password" maxlength="15" required>
 
         <button type="submit">Create account</button>
     </form>

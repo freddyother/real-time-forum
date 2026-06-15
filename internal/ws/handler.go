@@ -4,16 +4,29 @@ package ws
 import (
 	"log"
 	"net/http"
+	"net/url"
+	"strings"
 
 	"github.com/gorilla/websocket"
 )
 
-// upgrader converts an HTTP connection into a WebSocket connection.
-// CheckOrigin can be customised depending on the application's security requirements.
 var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool {
-		return true // allow all origins (adjust for production)
-	},
+	CheckOrigin: checkOrigin,
+}
+
+func checkOrigin(r *http.Request) bool {
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		// Non-browser clients may omit Origin.
+		return true
+	}
+
+	parsed, err := url.Parse(origin)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return false
+	}
+
+	return strings.EqualFold(parsed.Host, r.Host)
 }
 
 // HandleChat upgrades the incoming request to a WebSocket connection

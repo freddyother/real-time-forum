@@ -6,9 +6,12 @@ import (
 	"log"
 	"net/http"
 	"real-time-forum/internal/models"
+	"time"
 
 	"github.com/google/uuid"
 )
+
+const sessionTTL = 30 * 24 * time.Hour
 
 type registerRequest struct {
 	Nickname  string `json:"nickname"`
@@ -92,18 +95,44 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("[LOGIN] Session created: %s\n", sessionID)
+	log.Printf("[LOGIN] Session created for user=%d\n", user.ID)
 
 	// Issue session cookie.
 	http.SetCookie(w, &http.Cookie{
 		Name:     "session_id",
 		Value:    sessionID,
 		Path:     "/",
+		Expires:  time.Now().Add(sessionTTL),
+		MaxAge:   int(sessionTTL.Seconds()),
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 	})
 
 	log.Printf("[LOGIN] Login complete for user=%d\n", user.ID)
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"user": user,
+	})
+}
+
+// handleCurrentUser returns the user associated with the active session.
+func (s *Server) handleCurrentUser(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, ok := getUserIDFromContext(r)
+	if !ok {
+		http.Error(w, "unauthorised", http.StatusUnauthorized)
+		return
+	}
+
+	user, err := s.users.GetByID(r.Context(), userID)
+	if err != nil {
+		http.Error(w, "unauthorised", http.StatusUnauthorized)
+		return
+	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"user": user,
@@ -137,8 +166,8 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 // createSession stores a new session record.
 func (s *Server) createSession(ctx context.Context, id string, userID int64) error {
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO sessions (id, user_id) VALUES (?, ?)`,
-		id, userID,
+		`INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)`,
+		id, userID, time.Now().UTC().Add(sessionTTL),
 	)
 	return err
 }
@@ -156,7 +185,7 @@ func (s *Server) deleteSession(ctx context.Context, id string) error {
 func (s *Server) getUserIDBySession(ctx context.Context, id string) (int64, error) {
 	var userID int64
 	err := s.db.QueryRowContext(ctx,
-		`SELECT user_id FROM sessions WHERE id = ?`,
+		`SELECT user_id FROM sessions WHERE id = ? AND expires_at > CURRENT_TIMESTAMP`,
 		id,
 	).Scan(&userID)
 	if err != nil {

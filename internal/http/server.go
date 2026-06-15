@@ -660,6 +660,7 @@ func (s *Server) Router() http.Handler {
 	mux.HandleFunc("/api/register", s.handleRegister)
 	mux.HandleFunc("/api/login", s.handleLogin)
 	mux.HandleFunc("/api/logout", s.handleLogout)
+	mux.HandleFunc("/api/me", s.handleCurrentUser)
 
 	mux.HandleFunc("/api/posts", s.handlePosts)
 	mux.HandleFunc("/api/posts/", s.handlePostDetail)

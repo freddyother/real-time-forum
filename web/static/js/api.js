@@ -125,6 +125,10 @@ export function apiLogout() {
   return request('/logout', { method: 'POST' })
 }
 
+export function apiGetCurrentUser() {
+  return request('/me')
+}
+
 // Fetch paginated posts: GET /api/posts?limit=10&offset=0
 // Returns: { posts: [], has_more: boolean, next_offset: number }
 export async function apiGetPosts(limit = 10, offset = 0) {
