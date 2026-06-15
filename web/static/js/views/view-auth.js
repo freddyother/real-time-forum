@@ -4,8 +4,7 @@ import { apiLogin, apiRegister } from '../api.js'
 import { setStateKey } from '../state.js'
 import { navigateTo } from '../router.js'
 
-// Renders the authentication view (login or register) using
-// the Glass Bubbles Lavender style.
+// Renders the authentication view (login or register).
 export function renderAuthView(root, mode = 'login') {
   const container = document.createElement('div')
   container.className = 'auth-container'
