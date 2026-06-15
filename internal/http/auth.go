@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"real-time-forum/internal/models"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -77,9 +78,10 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("[LOGIN] Attempt username/email=%s\n", req.Identifier)
+	identifier := strings.TrimSpace(req.Identifier)
+	log.Printf("[LOGIN] Attempt username/email=%s\n", identifier)
 
-	user, err := s.users.Authenticate(r.Context(), req.Identifier, req.Password)
+	user, err := s.users.Authenticate(r.Context(), identifier, req.Password)
 	if err != nil {
 		log.Println("[LOGIN] Invalid credentials:", err)
 		http.Error(w, "invalid credentials", http.StatusUnauthorized)

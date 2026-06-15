@@ -88,7 +88,7 @@ func (m *UserModel) GetByIdentifier(ctx context.Context, identifier string) (*Us
 	query := `
 	SELECT id, uuid, nickname, age, gender, first_name, last_name, email, password_hash, created_at
 	FROM users
-	WHERE nickname = ? OR email = ?
+	WHERE lower(nickname) = lower(?) OR lower(email) = lower(?)
 	LIMIT 1`
 
 	row := m.DB.QueryRowContext(ctx, query, identifier, identifier)
