@@ -12,9 +12,9 @@
   --text-dark: #e7eaee;
   --text-light: #9aa4b2;
 
-  --purple: #6f8f7a;
-  --purple-light: #91a898;
-  --purple-dark: #d9e0db;
+  --purple: #3f7df4;
+  --purple-light: #68a0ff;
+  --purple-dark: #9ec2ff;
 
   --card-bg: #1d2228;
   --card-border: #343c46;
@@ -24,14 +24,14 @@
   --sidebar-width: 260px;
 
   --nav-h: 64px;
-  --green: #79b47d;
+  --green: #4fd37b;
   --surface-1: #191d22;
   --surface-2: #20262d;
   --surface-3: #29313a;
   --surface-hover: #303945;
   --border-soft: rgba(255, 255, 255, 0.08);
-  --focus-ring: rgba(111, 143, 122, 0.28);
-  --danger: #c76565;
+  --focus-ring: rgba(63, 125, 244, 0.3);
+  --danger: #ff5d73;
 }
 
 /* Global reset */
@@ -1743,7 +1743,7 @@ body {
 }
 
 ::selection {
-  background: rgba(111, 143, 122, 0.38);
+  background: rgba(63, 125, 244, 0.45);
   color: #f4f6f8;
 }
 
@@ -1763,7 +1763,7 @@ body {
 }
 
 .nav-logo {
-  color: #f1f3f5;
+  color: #a9c8ff;
   font-weight: 750;
 }
 
@@ -1774,10 +1774,10 @@ body {
 .nav-avatar,
 .comment-avatar,
 .chat-user-avatar {
-  background: linear-gradient(135deg, #2e3a33 0%, #405149 100%);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  color: #e9eee9;
-  box-shadow: none;
+  background: linear-gradient(135deg, #2858d8 0%, #68a0ff 100%);
+  border: 1px solid rgba(154, 192, 255, 0.32);
+  color: #ffffff;
+  box-shadow: 0 10px 24px rgba(63, 125, 244, 0.28);
 }
 
 .nav-btn,
@@ -1798,7 +1798,7 @@ body {
 .cat-chip:hover,
 .category-chip:hover {
   background: var(--surface-hover);
-  border-color: rgba(111, 143, 122, 0.38);
+  border-color: rgba(104, 160, 255, 0.48);
   opacity: 1;
 }
 
@@ -1810,9 +1810,9 @@ body {
 .category-chip.is-selected,
 .cat-chip.active {
   background: var(--purple);
-  border-color: rgba(145, 168, 152, 0.5);
-  color: #101412 !important;
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.24);
+  border-color: rgba(154, 192, 255, 0.65);
+  color: #ffffff !important;
+  box-shadow: 0 12px 28px rgba(63, 125, 244, 0.28);
 }
 
 .nav-btn.active:hover,
@@ -1879,13 +1879,17 @@ textarea:focus,
 .form-title,
 .auth-header h2,
 .new-post-header h2,
-.post-title,
-.post-page-title,
 .comments-title,
 .chat-title,
 .chat-side-title,
 .comment-author {
   color: #eef1f3;
+}
+
+.post-title,
+.post-page-title,
+.chat-side-title {
+  color: #9ec2ff;
 }
 
 .form-subtitle,
@@ -1910,7 +1914,7 @@ small {
 
 .form-footer a,
 .auth-switch a {
-  color: #b9c8bd;
+  color: #a9c8ff;
 }
 
 .feed-list {
@@ -1923,6 +1927,7 @@ small {
   margin-bottom: 12px;
   background: var(--surface-2);
   border: 1px solid var(--card-border);
+  border-left: 3px solid rgba(63, 125, 244, 0.52);
   border-radius: var(--radius);
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.2);
   backdrop-filter: none;
@@ -1930,7 +1935,8 @@ small {
 
 .post-card:hover {
   background: var(--surface-3);
-  border-color: rgba(111, 143, 122, 0.34);
+  border-color: rgba(104, 160, 255, 0.45);
+  border-left-color: var(--purple-light);
   box-shadow: 0 18px 38px rgba(0, 0, 0, 0.26);
   transform: translateY(-1px);
 }
@@ -1941,9 +1947,9 @@ small {
 
 .post-category,
 .post-page-category {
-  background: rgba(111, 143, 122, 0.18);
-  border: 1px solid rgba(111, 143, 122, 0.32);
-  color: #d7e2da;
+  background: rgba(63, 125, 244, 0.18);
+  border: 1px solid rgba(104, 160, 255, 0.36);
+  color: #cfe0ff;
 }
 
 .post-divider,
@@ -1994,13 +2000,13 @@ small {
 }
 
 .chat-user-row.is-active {
-  background: rgba(111, 143, 122, 0.16);
-  border-color: rgba(111, 143, 122, 0.4);
-  box-shadow: none;
+  background: rgba(63, 125, 244, 0.16);
+  border-color: rgba(104, 160, 255, 0.52);
+  box-shadow: 0 10px 26px rgba(63, 125, 244, 0.16);
 }
 
 .chat-user-row.is-active .chat-user-avatar {
-  background: #425349;
+  background: linear-gradient(135deg, #2858d8 0%, #68a0ff 100%);
 }
 
 .chat-user-name {
@@ -2026,8 +2032,8 @@ small {
 }
 
 .chat-bubble.mine {
-  background: #2b3b31;
-  border-color: #405548;
+  background: #244f91;
+  border-color: rgba(104, 160, 255, 0.42);
 }
 
 .chat-bubble.theirs {
@@ -2046,8 +2052,9 @@ small {
 
 .chat-compose button {
   background: var(--purple);
-  border-color: rgba(145, 168, 152, 0.5);
-  color: #101412;
+  border-color: rgba(154, 192, 255, 0.65);
+  color: #ffffff;
+  box-shadow: 0 10px 24px rgba(63, 125, 244, 0.22);
 }
 
 .chat-compose button:hover {
@@ -2075,19 +2082,19 @@ small {
 .category-chip,
 .cat-chip {
   background: #242b33;
-  color: #d7e2da;
+  color: #cfe0ff;
   border-color: #3a4651;
 }
 
 .category-chip.is-selected,
 .cat-chip.active {
-  color: #101412;
+  color: #ffffff;
 }
 
 .post-back {
   background: var(--surface-2);
   border: 1px solid var(--card-border);
-  color: #d7e2da;
+  color: #cfe0ff;
   text-align: center;
 }
 
@@ -2101,7 +2108,7 @@ small {
 }
 
 .comment-form button {
-  border: 1px solid rgba(145, 168, 152, 0.5);
+  border: 1px solid rgba(154, 192, 255, 0.65);
 }
 
 .post-menu {
