@@ -2037,8 +2037,8 @@ small {
 }
 
 .chat-bubble.mine {
-  background: #123f55;
-  border-color: rgba(91, 218, 243, 0.34);
+  background: #172331;
+  border-color: #34485a;
 }
 
 .chat-bubble.theirs {
@@ -2067,7 +2067,31 @@ small {
 }
 
 .chat-status.is-seen {
-  color: #7ca5c7;
+  color: #33c7ff;
+  opacity: 1;
+  text-shadow: 0 0 8px rgba(51, 199, 255, 0.5);
+}
+
+.chat-status.is-delivered {
+  color: #9aa8b4;
+  opacity: 0.95;
+}
+
+.chat-status.is-sent {
+  color: #7f8d99;
+  opacity: 0.9;
+}
+
+.chat-status {
+  right: 7px;
+  bottom: 4px;
+  font-size: 12px;
+  letter-spacing: -2px;
+}
+
+.chat-bubble.mine .chat-time {
+  color: #a8b5c0;
+  opacity: 0.9;
 }
 
 .chat-presence.online {
